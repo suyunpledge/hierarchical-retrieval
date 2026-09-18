@@ -1,7 +1,7 @@
 """
-Embedding 服务 —— 对接 nomic-embed-text 嵌入向量模型
+Embedding 服务 —— 对接 Ollama 本地嵌入模型（默认 bge-m3）
 
-通过 Ollama API 调用 nomic-embed-text:latest 生成文本嵌入向量。
+通过 Ollama API 调用配置的嵌入模型（默认 bge-m3:latest，1024 维）生成文本嵌入向量。
 """
 
 import logging
@@ -17,9 +17,9 @@ logger = logging.getLogger(__name__)
 
 class NomicEmbedding:
     """
-    nomic-embed-text 嵌入向量客户端
+    Ollama 嵌入向量客户端（类名 NomicEmbedding 沿用历史命名；实际模型由配置决定）
 
-    依赖: 本地需安装 Ollama 并已拉取 nomic-embed-text 模型
+    依赖: 本地需安装 Ollama 并已拉取配置的嵌入模型（默认 bge-m3）
     """
 
     def __init__(self, config: Optional[HConfig] = None):

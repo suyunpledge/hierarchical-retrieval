@@ -1,6 +1,6 @@
 # hierarchical-retrieval
 
-> 分级检索开发工具包 — 全文缓存 + 关键句库 + 话题界域三级架构，兼容 `nomic-embed-text` 嵌入向量模型，在 prompt 体积有界的前提下扩展可检索的历史记忆容量。
+> 分级检索开发工具包 — 全文缓存 + 关键句库 + 话题界域三级架构，基于 Ollama 本地嵌入（默认 `bge-m3`，1024 维），在 prompt 体积有界的前提下扩展可检索的历史记忆容量。
 
 [![Python](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -110,7 +110,7 @@ AI 将对话内容**划分为不同的话题界域**，按界域分配关键句�
 ## 特性
 
 - **三级分级检索** — 全文缓存 → 关键句库 → 话题界域，逐层收敛检索范围
-- **nomic-embed-text 集成** — 通过 Ollama API 调用，向量自动 L2 归一化（内积 = 余弦相似度）
+- **bge-m3 集成** — 通过 Ollama API 调用，向量自动 L2 归一化（内积 = 余弦相似度）
 - **FAISS 向量索引** — 基于 `IndexFlatIP`，支持持久化到磁盘，进程重启自动恢复
 - **话题自动聚类** — 新内容自动归入已有话题或创建新话题，话题向量平滑更新
 - **关键句启发式提取** — 基于信号词权重、位置、长度的轻量提取，无需额外 LLM 调用
@@ -127,7 +127,7 @@ AI 将对话内容**划分为不同的话题界域**，按界域分配关键句�
 | 步骤 | 说明 | 命令 |
 |------|------|------|
 | 1. Python | 需要 3.9+ | `python --version` |
-| 2. 拉取模型 | 下载 nomic-embed-text 嵌入模型 | `ollama pull nomic-embed-text` |
+| 2. 拉取模型 | 下载 bge-m3 嵌入模型（默认） | `ollama pull bge-m3` |
 | 3. 启动 Ollama | 默认监听 `http://localhost:11434` | `ollama serve` |
 
 ### 安装本包
@@ -181,8 +181,8 @@ python hierarchical_retrieval/examples/demo.py
 
 | 参数 | 默认值 | 中文推荐 | 说明 |
 |------|--------|----------|------|
-| `embedding_model` | `nomic-embed-text:latest` | 同默认 | Ollama 嵌入模型名 |
-| `embedding_dim` | `768` | 同默认 | 嵌入向量维度 |
+| `embedding_model` | `bge-m3:latest` | 同默认 | Ollama 嵌入模型名 |
+| `embedding_dim` | `1024` | 同默认 | 嵌入向量维度 |
 | `embedding_base_url` | `http://localhost:11434` | 同默认 | Ollama 服务地址 |
 | `embedding_request_timeout` | `60` | 同默认 | 请求超时（秒） |
 
@@ -202,14 +202,14 @@ python hierarchical_retrieval/examples/demo.py
 |------|--------|----------|------|
 | `top_k_key_sentences` | `5` | `3` | 每次检索返回的关键句数 |
 | `top_k_full_context` | `3` | `2` | 每个关键句关联的全文段落数 |
-| `key_sentence_similarity_threshold` | `0.50` | `0.60` | 关键句匹配相似度阈值（中文相似度偏高，建议 0.60 起步） |
+| `key_sentence_similarity_threshold` | `0.55` | 同默认 | 关键句匹配相似度阈值（bge-m3 分布实测选值） |
 
 **话题界域**
 
 | 参数 | 默认值 | 中文推荐 | 说明 |
 |------|--------|----------|------|
-| `topic_similarity_threshold` | `0.45` | `0.55` | 查询匹配话题的相似度阈值 |
-| `topic_min_similarity` | `0.40` | `0.70` | 写入时归入已有话题的最小相似度 |
+| `topic_similarity_threshold` | `0.55` | 同默认 | 查询匹配话题的相似度阈值（bge-m3 分布实测选值） |
+| `topic_min_similarity` | `0.62` | 同默认 | 写入时归入已有话题的最小相似度（bge-m3 分布实测选值） |
 | `topic_max_domains` | `100` | 同默认 | 最大话题域数量 |
 
 **关键句提取**
@@ -242,12 +242,12 @@ python hierarchical_retrieval/examples/demo.py
 |------|--------|------|
 | `log_level` | `INFO` | 日志级别 |
 
-> **中文调参提示**：nomic-embed-text 对中文的余弦相似度普遍偏高（弱相关内容也常在 0.5~0.7）。建议写入归并阈值 `topic_min_similarity` 设为 `0.70` 左右，查询匹配阈值 `topic_similarity_threshold` 设为 `0.55` 左右，以避免不同话题被误并。可直接复制：
+> **中文调参提示**：默认嵌入为 bge-m3（1024 维），默认阈值（0.55 / 0.55 / 0.62）按其中文分布实测选定，通常可直接使用；若你的语料出现话题误并或漏召，可再微调这两个阈值。可直接复制：
 
 config = HConfig(
 storage_root="./my_store",
-topic_min_similarity=0.70,       # 写入归并阈值（中文调高）
-topic_similarity_threshold=0.55, # 查询匹配阈值（中文调高）
+topic_min_similarity=0.62,       # 写入归并阈值（bge-m3 实测选值）
+topic_similarity_threshold=0.55, # 查询匹配阈值（bge-m3 实测选值）
 top_k_key_sentences=3,
 top_k_full_context=2,
 )
@@ -270,7 +270,7 @@ hr = HierarchicalRetrieval(embedding=None, config=None)
 ### `NomicEmbedding` — 嵌入服务
 
 emb = NomicEmbedding(config=None)
-emb.embed("文本")        # -> np.ndarray (768,)
+emb.embed("文本")        # -> np.ndarray (1024,)
 emb.embed_batch(["t1"])  # -> list[np.ndarray]
 
 ### `CloudCache` — L1 全文缓存
@@ -418,7 +418,7 @@ hr.ingest_batch(conversations)
 
 status = hr.status()
 {
-"embedding_model": "nomic-embed-text:latest",
+"embedding_model": "bge-m3:latest",
 "cloud_cache_entries": 4,
 "key_sentence_count": 12,
 "topic_domains": 3,
@@ -447,7 +447,7 @@ A: 确保已运行 `ollama serve`，默认地址 `http://localhost:11434` 可达
 
 **Q: 所有对话被归入同一话题？**
 
-A: 通常是相似度阈值过低。nomic-embed-text 对中文余弦相似度偏高，请调高 `topic_min_similarity`（建议 0.70）。
+A: 通常是相似度阈值过低。默认阈值（`topic_min_similarity` = 0.62）按 bge-m3 中文分布选定；若仍出现误并，可继续调高该值。
 
 **Q: 检索结果关键句为空？**
 

@@ -3,6 +3,7 @@
 > 整合时间：2026-08-14 (Asia/Shanghai)
 > 源目录：`Desktop/hierarchical_retrieval/`
 > 共 21 个源文件（含 17 个 Python 源文件 + 4 个配置/启动文件），本文件将其全部整合为单一文档。
+> **注（2026-09-18）**：本文档为 2026-08-14 的整合快照；嵌入模型后续已由 nomic（768 维）更新为 bge-m3（1024 维）、阈值随实测调整（相关表述已尽量同步，若有出入以仓库源码与 README 为准）。
 
 ---
 
@@ -93,7 +94,7 @@ hierarchical_retrieval/
 ```markdown
 # hierarchical-retrieval
 
-> 分级检索开发工具包 — 云端缓存 + 关键句库 + 话题界域三级架构，兼容 `nomic-embed-text` 嵌入向量模型，实现大模型上下文记忆的几何倍数扩展。
+> 分级检索开发工具包 — 云端缓存 + 关键句库 + 话题界域三级架构，基于 Ollama 本地嵌入（默认 `bge-m3`），实现大模型上下文记忆的几何倍数扩展。
 
 ## 背景与动机
 
@@ -133,7 +134,7 @@ print(result["summary"])
 
 ```bash
 pip install -e .
-# 前置：ollama serve + ollama pull nomic-embed-text
+# 前置：ollama serve + ollama pull bge-m3
 ```
 
 ## License
@@ -153,7 +154,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "hierarchical-retrieval"
 version = "0.1.0"
-description = "分级检索开发工具包 — 云端缓存 + 关键句库 + 话题界域三级架构，兼容 nomic-embed-text"
+description = "分级检索开发工具包 — 云端缓存 + 关键句库 + 话题界域三级架构，兼容 bge-m3"
 readme = "README.md"
 requires-python = ">=3.8"
 license = { text = "MIT" }
@@ -161,7 +162,7 @@ authors = [
     { name = "hierarchical-retrieval" },
 ]
 keywords = [
-    "retrieval", "embedding", "nomic-embed-text", "memory",
+    "retrieval", "embedding", "bge-m3", "memory",
     "rag", "topic-domain", "llm", "context-management",
 ]
 classifiers = [
@@ -311,7 +312,7 @@ SOFTWARE.
 hierarchical_retrieval — 分级检索开发工具包
 
 基于"云端缓存 + 关键句库 + 话题界域"三级架构，
-兼容 nomic-embed-text 嵌入向量模型，
+基于 Ollama 本地嵌入（默认 bge-m3），
 实现上下文记忆的几何倍数扩展。
 
 快速开始:
@@ -378,8 +379,8 @@ class HConfig:
     """分级检索全局配置"""
 
     # ── Embedding 服务 ──────────────────────────────────────────
-    embedding_model: str = "nomic-embed-text:latest"
-    embedding_dim: int = 768           # nomic-embed-text 输出维度
+    embedding_model: str = "bge-m3:latest"
+    embedding_dim: int = 1024           # bge-m3 输出维度
     embedding_base_url: str = "http://localhost:11434"
     embedding_request_timeout: int = 60
 
@@ -441,13 +442,13 @@ __all__ = [
 
 ### core/embedding.py
 
-> `hierarchical_retrieval/core/embedding.py` — L0 嵌入服务，对接 Ollama nomic-embed-text
+> `hierarchical_retrieval/core/embedding.py` — L0 嵌入服务，对接 Ollama bge-m3
 
 ```python
 """
-Embedding 服务 —— 对接 nomic-embed-text 嵌入向量模型
+Embedding 服务 —— 对接 bge-m3 嵌入向量模型
 
-通过 Ollama API 调用 nomic-embed-text:latest 生成文本嵌入向量。
+通过 Ollama API 调用 bge-m3:latest 生成文本嵌入向量。
 """
 
 import logging
@@ -463,9 +464,9 @@ logger = logging.getLogger(__name__)
 
 class NomicEmbedding:
     """
-    nomic-embed-text 嵌入向量客户端
+    bge-m3 嵌入向量客户端
 
-    依赖: 本地需安装 Ollama 并已拉取 nomic-embed-text 模型
+    依赖: 本地需安装 Ollama 并已拉取 bge-m3 模型
     """
 
     def __init__(self, config: Optional[HConfig] = None):
@@ -1820,7 +1821,7 @@ class KeySentenceExtractor:
 
 运行前请确保:
   - Ollama 已启动 (ollama serve)
-  - nomic-embed-text 模型已拉取 (ollama pull nomic-embed-text)
+  - bge-m3 模型已拉取 (ollama pull bge-m3)
 """
 
 import logging
@@ -1845,14 +1846,14 @@ def main():
         storage_root="./demo_storage",
         top_k_key_sentences=3,
         top_k_full_context=2,
-        topic_min_similarity=0.70,
+        topic_min_similarity=0.62,
         topic_similarity_threshold=0.55,
     )
     print(f"\n[配置] 存储目录: {config.storage_root}")
     print(f"[配置] Embedding 模型: {config.embedding_model}")
 
     # ── 2. 初始化 ──────────────────────────────────────────
-    print("\n[初始化] 正在连接 Ollama / nomic-embed-text...")
+    print("\n[初始化] 正在连接 Ollama / bge-m3...")
     hr = HierarchicalRetrieval(config=config)
     print("[初始化] 完成")
 
@@ -1993,7 +1994,7 @@ logger = logging.getLogger(__name__)
 # ── FastAPI 应用 ──────────────────────────────────────
 app = FastAPI(
     title="分级检索 API",
-    description="基于 nomic-embed-text 的三级架构检索服务 (CloudCache + KeySentence + TopicDomain)",
+    description="基于 bge-m3 的三级架构检索服务 (CloudCache + KeySentence + TopicDomain)",
     version="0.1.0",
 )
 
@@ -2134,7 +2135,7 @@ REM 检查 Ollama 是否运行
 curl -s http://localhost:11434/api/tags >nul 2>&1
 if errorlevel 1 (
     echo [警告] Ollama 未运行，请先执行: ollama serve
-    echo [提示] 并确保已拉取 nomic-embed-text: ollama pull nomic-embed-text
+    echo [提示] 并确保已拉取 bge-m3: ollama pull bge-m3
     echo.
     pause
     exit /b 1
@@ -2185,19 +2186,19 @@ ws.Run "cmd.exe /c cd /d ""%USERPROFILE%\Desktop\hierarchical_retrieval"" && ""C
 
 | 参数 | 默认值 | 中文推荐 | 说明 |
 |------|--------|----------|------|
-| `embedding_model` | `nomic-embed-text:latest` | 同默认 | Ollama 嵌入模型 |
-| `embedding_dim` | `768` | 同默认 | 向量维度 |
+| `embedding_model` | `bge-m3:latest` | 同默认 | Ollama 嵌入模型 |
+| `embedding_dim` | `1024` | 同默认 | 向量维度 |
 | `embedding_base_url` | `http://localhost:11434` | 同默认 | Ollama 地址 |
 | `storage_root` | `./hierarchical_storage` | — | 存储根目录 |
 | `top_k_key_sentences` | `5` | `3` | 检索关键句数 |
 | `top_k_full_context` | `3` | `2` | 关联全文段落数 |
-| `topic_similarity_threshold` | `0.45` | `0.55` | 查询匹配话题阈值 |
-| `topic_min_similarity` | `0.40` | `0.70` | 写入归并话题阈值 |
+| `topic_similarity_threshold` | `0.55` | 同默认 | 查询匹配话题阈值 |
+| `topic_min_similarity` | `0.62` | 同默认 | 写入归并话题阈值 |
 | `topic_max_domains` | `100` | 同默认 | 最大话题域数 |
 | `max_key_sentences_per_chunk` | `3` | 同默认 | 每块关键句上限 |
 | `key_sentence_max_length` | `128` | 同默认 | 关键句最大字符数 |
 
-> **中文提示**：nomic-embed-text 对中文余弦相似度偏高，建议 `topic_min_similarity=0.70`、`topic_similarity_threshold=0.55`。
+> **中文提示**：默认嵌入为 bge-m3（1024 维），阈值（`topic_min_similarity` = 0.62、`topic_similarity_threshold` = 0.55）按其中文分布实测选定，通常可直接使用。
 
 ---
 

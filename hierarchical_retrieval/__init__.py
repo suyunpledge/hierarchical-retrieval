@@ -2,7 +2,7 @@
 hierarchical_retrieval — 分级检索开发工具包
 
 基于"全文缓存 + 关键句库 + 话题界域"三级架构，
-兼容 nomic-embed-text 嵌入向量模型，
+兼容 Ollama 本地嵌入模型（默认 bge-m3），
 在 prompt 体积有界的前提下扩展可检索的历史记忆容量。
 
 快速开始:

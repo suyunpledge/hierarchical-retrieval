@@ -9,7 +9,7 @@
 
 运行前请确保:
   - Ollama 已启动 (ollama serve)
-  - nomic-embed-text 模型已拉取 (ollama pull nomic-embed-text)
+  - bge-m3 模型已拉取 (ollama pull bge-m3)
 """
 
 import logging
@@ -43,17 +43,16 @@ def main():
         storage_root=demo_storage,  # 存储根目录
         top_k_key_sentences=3,
         top_k_full_context=2,
-        # nomic-embed-text 对中文余弦相似度普遍偏高，
-        # 写入归并阈值需调高，否则不同话题会被误并；
-        # 查询匹配阈值可略低，保证召回。
-        topic_min_similarity=0.70,
+        # 阈值按 bge-m3 的中文分布实测选定：
+        # 写入归并 0.62、查询匹配 0.55（与包内默认一致）。
+        topic_min_similarity=0.62,
         topic_similarity_threshold=0.55,
     )
     print(f"\n[配置] 存储目录: {config.storage_root}")
     print(f"[配置] Embedding 模型: {config.embedding_model}")
 
     # ── 2. 初始化 ──────────────────────────────────────────
-    print("\n[初始化] 正在连接 Ollama / nomic-embed-text...")
+    print(f"\n[初始化] 正在连接 Ollama / {config.embedding_model}...")
     hr = HierarchicalRetrieval(config=config)
     print("[初始化] 完成")
 

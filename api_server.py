@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 # ── FastAPI 应用 ──────────────────────────────────────
 app = FastAPI(
     title="分级检索 API",
-    description="基于 nomic-embed-text 的三级架构检索服务 (CloudCache + KeySentence + TopicDomain) + OpenAI 兼容上下文压缩代理",
+    description="基于本地嵌入模型（默认 bge-m3）的三级架构检索服务 (CloudCache + KeySentence + TopicDomain) + OpenAI 兼容上下文压缩代理",
     version="0.5.0",
 )
 
@@ -59,9 +59,8 @@ config = HConfig(
     storage_root=STORAGE_ROOT,
     embedding_base_url=OLLAMA_URL,
     chat_backend_url=os.environ.get("HR_CHAT_BACKEND", OLLAMA_URL),
-    # M6 修复：API 服务主要跑中文对话，应用文档自荐的中文阈值。
-    # nomic-embed-text 的中文余弦相似度普遍偏高（闲聊与正题可达 0.9），
-    # 沿用英文默认阈值会让全部对话被误并入同一话题域，L3 形同虚设。
+    # M6 修复：API 服务主要跑中文对话，显式采用中文场景的相似度阈值，
+    # 避免沿用英文默认阈值导致对话被误并入同一话题域、L3 形同虚设。
     topic_min_similarity=0.70,
     topic_similarity_threshold=0.55,
     key_sentence_similarity_threshold=0.60,
