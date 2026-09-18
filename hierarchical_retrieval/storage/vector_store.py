@@ -1,0 +1,293 @@
+"""
+向量存储模块 —— 基于 FAISS 的本地向量索引
+"""
+
+import json
+import os
+import pickle
+import logging
+import threading
+import uuid
+from pathlib import Path
+from typing import Optional
+
+import numpy as np
+
+from .base import StorageBase
+
+logger = logging.getLogger(__name__)
+
+
+class VectorStore(StorageBase):
+    """
+    轻量向量存储
+
+    使用 FAISS (IndexFlatIP) 作为 ANN 索引后端，
+    同时维护 id → metadata 的映射。
+    """
+
+    def __init__(self, root_dir: str, dimension: int = 768):
+        self.root = Path(root_dir)
+        self.root.mkdir(parents=True, exist_ok=True)
+
+        self.dimension = dimension
+        self._index: Optional["faiss.Index"] = None
+        self._id_map: dict[str, int] = {}       # external_id → faiss_id
+        self._reverse_map: dict[int, str] = {}   # faiss_id → external_id
+        self._metadata: dict[str, dict] = {}     # external_id → metadata
+        self._next_id: int = 0
+        self._lock = threading.RLock()
+        # 正排索引: entry_id → [faiss_id...]（条目内检索用，避免全库扫描）
+        self._entry_to_ids: dict[str, list[int]] = {}
+        # 增量落盘脏标记（N-perf 修复: 写操作不再每次全量重写索引）
+        self._dirty = False
+
+        self._load_index()
+
+    # ── 延迟导入 FAISS（避免没有 GPU 时报错） ──────────────────
+    @property
+    def index(self):
+        if self._index is None:
+            import faiss
+            self._index = faiss.IndexFlatIP(self.dimension)
+            # 从磁盘恢复已有数据
+            self._load_index()
+            if self._index is None:
+                self._index = faiss.IndexFlatIP(self.dimension)
+        return self._index
+
+    # ── 持久化 ──────────────────────────────────────────────────
+
+    def _index_path(self) -> Path:
+        return self.root / "vector_index.faiss"
+
+    def _meta_path(self) -> Path:
+        return self.root / "metadata.json"
+
+    def _save_index(self):
+        import faiss
+        index_path = self._index_path()
+        meta_path = self._meta_path()
+        index_tmp = index_path.with_name(f".{index_path.name}.{uuid.uuid4().hex}.tmp")
+        meta_tmp = meta_path.with_name(f".{meta_path.name}.{uuid.uuid4().hex}.tmp")
+        faiss.write_index(self.index, str(index_tmp))
+        meta = {
+            "id_map": self._id_map,
+            "reverse_map": {str(k): v for k, v in self._reverse_map.items()},
+            "metadata": self._metadata,
+            "next_id": self._next_id,
+            "dimension": self.dimension,
+            "entry_to_ids": {k: v for k, v in self._entry_to_ids.items()},
+        }
+        meta_tmp.write_text(
+            json.dumps(meta, ensure_ascii=False, default=str), encoding="utf-8"
+        )
+        os.replace(index_tmp, index_path)
+        os.replace(meta_tmp, meta_path)
+
+    def _load_index(self):
+        idx_path = self._index_path()
+        meta_path = self._meta_path()
+        if idx_path.exists() and meta_path.exists():
+            import faiss
+            try:
+                self._index = faiss.read_index(str(idx_path))
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                self._id_map = meta["id_map"]
+                self._reverse_map = {int(k): v for k, v in meta["reverse_map"].items()}
+                self._metadata = meta["metadata"]
+                self._next_id = meta["next_id"]
+                self.dimension = meta.get("dimension", 768)
+                eti = meta.get("entry_to_ids")
+                if isinstance(eti, dict):
+                    self._entry_to_ids = {k: list(v) for k, v in eti.items()}
+                else:
+                    # 旧版文件无正排索引: 从 metadata 惰性重建
+                    for ext, md in self._metadata.items():
+                        eid = (md or {}).get("entry_id")
+                        if not eid:
+                            continue
+                        fid = self._id_map.get(ext, -1)
+                        if fid >= 0:
+                            self._entry_to_ids.setdefault(eid, []).append(fid)
+            except Exception:
+                self._index = None
+
+    # ── 核心操作 ────────────────────────────────────────────────
+
+    def add(self, external_id: str, vector: np.ndarray, metadata: Optional[dict] = None) -> int:
+        """添加向量，返回 faiss_id。零向量将被拒绝（返回 -1），防止污染索引"""
+        vec = np.asarray(vector, dtype=np.float32)
+        if vec.ndim == 1:
+            vec = vec[np.newaxis, :]
+        # 零向量防护（TRAE v0.2 补丁）: 嵌入服务失败时会产生零向量，
+        # 写入会污染索引（与任何查询内积恒为 0，且占据 top_k 名额）
+        if float(np.linalg.norm(vec)) < 1e-10:
+            logger.warning(
+                "拒绝添加零向量 (id=%s): 嵌入服务可能异常，跳过以防索引污染",
+                external_id,
+            )
+            return -1
+        with self._lock:
+            faiss_id = self._next_id
+            self.index.add(vec)
+            self._id_map[external_id] = faiss_id
+            self._reverse_map[faiss_id] = external_id
+            self._metadata[external_id] = metadata or {}
+            self._next_id += 1
+            entry_id = (metadata or {}).get("entry_id")
+            if entry_id:
+                self._entry_to_ids.setdefault(entry_id, []).append(faiss_id)
+            self._dirty = True
+        return faiss_id
+
+    def add_many(self, items: list[tuple[str, np.ndarray, Optional[dict]]]) -> None:
+        """
+        批量添加：一次 faiss.add + 一次落盘。
+        （add() 每条向量都全量重写索引与 metadata.json，一次 ingest
+       几十条向量就是几十次 O(n) 重写——这是此前写入慢的主因）
+        """
+        if not items:
+            return
+        # 零向量防护（TRAE v0.2 补丁）: 与 add() 同样的防线，批量入口也要拦
+        valid = [
+            (i, v, m) for i, v, m in items
+            if float(np.linalg.norm(np.asarray(v, dtype=np.float32))) >= 1e-10
+        ]
+        for (i, _v, _m) in items:
+            if all(i != vi for vi, _vv, _mm in valid):
+                logger.warning(
+                    "拒绝添加零向量 (id=%s): 嵌入服务可能异常，跳过以防索引污染", i
+                )
+        if not valid:
+            return
+        items = valid
+        vecs = np.vstack([np.asarray(v, dtype=np.float32) for _i, v, _m in items])
+        with self._lock:
+            for (external_id, _v, metadata) in items:
+                faiss_id = self._next_id
+                self._next_id += 1
+                self._id_map[external_id] = faiss_id
+                self._reverse_map[faiss_id] = external_id
+                self._metadata[external_id] = metadata or {}
+                entry_id = (metadata or {}).get("entry_id")
+                if entry_id:
+                    self._entry_to_ids.setdefault(entry_id, []).append(faiss_id)
+            self.index.add(vecs)
+            self._save_index()
+
+    def flush(self) -> None:
+        """脏标记落盘（原子写）。崩溃时最多丢失最近一批未 flush 的更新。"""
+        with self._lock:
+            if self._dirty:
+                self._save_index()
+                self._dirty = False
+
+    def search_by_entry(self, query_vector: np.ndarray, entry_id: str, top_k: int = 3) -> list[dict]:
+        """
+        条目内检索（正排索引版）: 直接取该 entry_id 的全部向量做内积排序，
+        复杂度 O(该条目向量数)，不再全库暴力扫描（N-perf 修复）。
+        条目无向量时返回空列表，由调用方走回退逻辑。
+        """
+        q = np.asarray(query_vector, dtype=np.float32).reshape(1, -1)
+        with self._lock:
+            faiss_ids = self._entry_to_ids.get(entry_id, [])
+            if not faiss_ids or self.index.ntotal == 0:
+                return []
+            vecs = np.vstack([self.index.reconstruct(int(f)) for f in faiss_ids])
+        scores = (vecs @ q.T).flatten()
+        order = np.argsort(-scores)[:top_k]
+        out = []
+        for oi in order:
+            fid = int(faiss_ids[int(oi)])
+            ext = self._reverse_map.get(fid, "")
+            if not ext:
+                continue
+            out.append({
+                "id": ext,
+                "score": float(scores[int(oi)]),
+                "metadata": self._metadata.get(ext, {}),
+            })
+        return out
+
+    def search(self, query_vector: np.ndarray, top_k: int = 5) -> list[dict]:
+        """
+        检索最相似的 top_k 条记录。
+
+        返回: [{"id": str, "score": float, "metadata": dict}, ...]
+        """
+        if self.index.ntotal == 0:
+            return []
+        q = np.asarray(query_vector, dtype=np.float32)
+        if q.ndim == 1:
+            q = q[np.newaxis, :]
+        with self._lock:
+            scores, indices = self.index.search(q, top_k)
+        results = []
+        for score, faiss_id in zip(scores[0], indices[0]):
+            if faiss_id == -1:
+                continue
+            ext_id = self._reverse_map.get(int(faiss_id), "")
+            if not ext_id:
+                continue
+            results.append({
+                "id": ext_id,
+                "score": float(score),
+                "metadata": self._metadata.get(ext_id, {}),
+            })
+        return results
+
+    def get_metadata(self, external_id: str) -> Optional[dict]:
+        return self._metadata.get(external_id)
+
+    def update_metadata(self, external_id: str, metadata: dict) -> bool:
+        with self._lock:
+            if external_id in self._metadata:
+                self._metadata[external_id].update(metadata)
+                self._dirty = True
+        # N-review2: 低频写操作兜底落盘（锁外执行）
+        try:
+            self.flush()
+        except Exception as _e:
+            logger.warning(f"[VectorStore] update_metadata flush 失败: {_e}")
+        return True
+        return False
+
+    def delete(self, key: str) -> bool:
+        """删除（当前 FAISS 不支持按 id 删除，仅标记清除）"""
+        with self._lock:
+            if key in self._id_map:
+                faiss_id = self._id_map.pop(key)
+                self._reverse_map.pop(faiss_id, None)
+                self._metadata.pop(key, None)
+                for eid, ids in list(self._entry_to_ids.items()):
+                    if faiss_id in ids:
+                        ids.remove(faiss_id)
+                        if not ids:
+                            self._entry_to_ids.pop(eid, None)
+                self._dirty = True
+        # N-review2: 低频写操作兜底落盘（锁外执行，避免锁内 I/O）
+        try:
+            self.flush()
+        except Exception as _e:
+            logger.warning(f"[VectorStore] delete flush 失败: {_e}")
+        return True
+        return False
+
+    # ── StorageBase 接口 ────────────────────────────────────────
+
+    def save(self, key: str, value: any) -> None:
+        """value 应为 {"vector": list, "metadata": dict}"""
+        if isinstance(value, dict) and "vector" in value:
+            self.add(key, np.array(value["vector"]), value.get("metadata"))
+
+    def load(self, key: str) -> Optional[any]:
+        if key in self._metadata:
+            return {"id": key, "metadata": self._metadata[key]}
+        return None
+
+    def list_keys(self, prefix: str = "") -> list[str]:
+        return sorted(k for k in self._id_map if k.startswith(prefix))
+
+    def count(self, prefix: str = "") -> int:
+        return sum(1 for k in self._id_map if k.startswith(prefix))

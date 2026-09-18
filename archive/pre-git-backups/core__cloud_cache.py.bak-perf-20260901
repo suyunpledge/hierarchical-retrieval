@@ -1,0 +1,281 @@
+"""
+全文缓存模块 —— 第一级（基础信息库）
+
+将所有对话全文存入本地磁盘，一字不漏，作为完整的信息基础。
+支持逐条写入、向量索引检索、按时间/ID 读取。
+
+（类名 CloudCache 沿用历史命名；数据始终存放在本地磁盘，
+从未涉及任何"云端"存储。）
+"""
+
+import hashlib
+import json
+import logging
+import time
+import uuid
+import threading
+from typing import Optional
+
+import numpy as np
+
+from ..config import HConfig
+from ..storage.local_storage import LocalStorage
+from ..storage.vector_store import VectorStore
+from .embedding import NomicEmbedding
+from ..utils.text_processor import TextProcessor
+
+logger = logging.getLogger(__name__)
+
+
+class CloudCache:
+    """
+    全文缓存（CloudCache）—— 全文存储与向量检索
+
+    层级: 第一级
+    职责: 将所有对话原文保存到本地磁盘，支持全文检索和语义检索。
+    """
+
+    def __init__(
+        self,
+        embedding: NomicEmbedding,
+        config: Optional[HConfig] = None,
+    ):
+        self.config = config or HConfig()
+        self.embedding = embedding
+
+        # 存储后端
+        base_dir = self.config.storage_root
+        self._text_store = LocalStorage(
+            root_dir=f"{base_dir}/{self.config.cloud_cache_dir}",
+            use_json=True,
+        )
+        self._vector_store = VectorStore(
+            root_dir=f"{base_dir}/{self.config.vector_index_dir}/cloud_cache",
+            dimension=self.config.embedding_dim,
+        )
+
+        # 索引: entry_id → {chunk_index → chunk_text}
+        self._chunk_map: dict[str, dict[int, str]] = {}
+
+        # 内容去重索引: sha256(text) → entry_id（代理模式下同一历史会被
+        # 反复送入 ingest，没有去重会让库膨胀且关键句重复）
+        self._content_index_path = self._text_store.root / "content_index.json"
+        self._content_index: dict[str, str] = {}
+        self._content_lock = threading.RLock()
+        if self._content_index_path.exists():
+            try:
+                self._content_index = json.loads(
+                    self._content_index_path.read_text(encoding="utf-8")
+                )
+            except Exception as e:
+                logger.warning("加载内容去重索引失败（忽略）: %s", e)
+
+    # ── 写入 ────────────────────────────────────────────────────
+
+    def store(self, text: str, metadata: Optional[dict] = None, dedupe: bool = True) -> str:
+        """
+        将全文存入缓存，自动切块并构建向量索引。
+
+        Args:
+            text: 对话全文
+            metadata: 附加元数据（如时间戳、来源等）
+            dedupe: 内容级去重，重复文本直接复用已有条目
+
+        Returns:
+            entry_id: 本条记录的全局唯一 ID（重复内容返回原条目 ID）
+        """
+        content_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        with self._content_lock:
+            if dedupe and content_hash in self._content_index:
+                existing = self._content_index[content_hash]
+                logger.info("CloudCache 内容重复，复用条目 %s", existing)
+                return existing
+
+        entry_id = f"cc_{uuid.uuid4().hex[:12]}"
+        timestamp = time.time()
+
+        # 切块
+        chunks = TextProcessor.split_chunks(text)
+
+        # 先全部嵌入成功，再落盘（写入路径 strict：任何一块失败都在
+        # 持久化之前抛出，不留"有全文无向量"的半成品条目；
+        # 同时不让零向量进索引——否则检索会永久返回按插入序的垃圾结果）
+        vectors = self.embedding.embed_batch(chunks, strict=True)
+
+        meta = {
+            "entry_id": entry_id,
+            "timestamp": timestamp,
+            "total_chunks": len(chunks),
+            "total_length": len(text),
+            **(metadata or {}),
+        }
+
+        # 存储全文元数据
+        self._text_store.save(entry_id, {"meta": meta, "full_text": text})
+
+        # 批量存入向量索引（一次写入，替代此前每块一次的全量重写）
+        self._chunk_map[entry_id] = {}
+        self._vector_store.add_many([
+            (
+                f"{entry_id}_chunk_{idx}",
+                vec,
+                {
+                    "entry_id": entry_id,
+                    "chunk_index": idx,
+                    "chunk_text": chunk,
+                    "timestamp": timestamp,
+                },
+            )
+            for idx, (chunk, vec) in enumerate(zip(chunks, vectors))
+        ])
+        for idx, chunk in enumerate(chunks):
+            self._chunk_map[entry_id][idx] = chunk
+
+        # 登记内容去重索引
+        with self._content_lock:
+            self._content_index[content_hash] = entry_id
+            tmp = self._content_index_path.with_suffix(".json.tmp")
+            try:
+                tmp.write_text(
+                    json.dumps(self._content_index, ensure_ascii=False),
+                    encoding="utf-8",
+                )
+                tmp.replace(self._content_index_path)
+            except Exception as e:
+                logger.warning("写入内容去重索引失败: %s", e)
+
+        logger.info("CloudCache 写入: %s (%d 块, %d 字符)", entry_id, len(chunks), len(text))
+        return entry_id
+
+    # ── 检索 ────────────────────────────────────────────────────
+
+    def search(self, query: str, top_k: int = 3) -> list[dict]:
+        """
+        语义检索相关全文段落（全库范围）。
+
+        Args:
+            query: 查询文本
+            top_k: 返回的段落数
+
+        Returns:
+            [{"entry_id", "chunk_index", "chunk_text", "score", "timestamp", "full_text"?}, ...]
+            嵌入服务不可用（查询向量为零向量）时返回空列表，避免
+            FAISS 按插入序返回伪命中（M3 修复）。
+        """
+        q_vec = self.embedding.embed(query)
+        if not NomicEmbedding.is_valid(q_vec):
+            logger.error("查询嵌入失败（Embedding 服务不可用），本次检索返回空")
+            return []
+        results = self._vector_store.search(q_vec, top_k=top_k)
+        return self._enrich(results)
+
+    def search_in_entry(self, query: str, entry_id: str, top_k: int = 3) -> list[dict]:
+        """
+        在指定全文条目内检索最相关段落。
+
+        这是"关键句 → 全文关联"的落点：传入关键句的 source_entry_id，
+        返回的一定是该条目自己的段落，而不是全库里随便哪篇相似的东西。
+        条目内无命中时回退为原文开头片段，保证关联不落空。
+        嵌入服务不可用（零向量）时返回空列表（M3 修复）。
+        """
+        q_vec = self.embedding.embed(query)
+        if not NomicEmbedding.is_valid(q_vec):
+            logger.error("查询嵌入失败（Embedding 服务不可用），本次检索返回空")
+            return []
+        # IndexFlatIP 不支持元数据过滤。必须覆盖全部活跃向量后再筛
+        # entry_id；固定 Top 16 在库变大后会漏掉指定条目的真实片段。
+        results = self._vector_store.search(
+            q_vec, top_k=max(self._vector_store.count(), top_k)
+        )
+        hit = [r for r in results if r["metadata"].get("entry_id") == entry_id][:top_k]
+        enriched = self._enrich(hit)
+        if enriched:
+            return enriched
+
+        # 回退：条目向量不在索引中（历史坏数据/外部写入），直接给原文开头
+        full = self.get_full_text(entry_id)
+        if full:
+            meta = self.get_metadata(entry_id) or {}
+            return [{
+                "entry_id": entry_id,
+                "chunk_index": -1,
+                "chunk_text": full[:512],
+                "score": 0.0,
+                "timestamp": meta.get("timestamp", 0),
+                "full_text": full,
+            }]
+        return []
+
+    def _enrich(self, results: list[dict]) -> list[dict]:
+        """把 VectorStore 原始结果装配成带全文的检索结果"""
+        enriched = []
+        for r in results:
+            meta = r["metadata"]
+            chunk_text = meta.get("chunk_text", "")
+            entry_id = meta.get("entry_id", "")
+
+            # 尝试获取完整全文
+            full_text = None
+            if entry_id:
+                record = self._text_store.load(entry_id)
+                if record:
+                    full_text = record.get("full_text", "")
+
+            enriched.append({
+                "entry_id": entry_id,
+                "chunk_index": meta.get("chunk_index", -1),
+                "chunk_text": chunk_text,
+                "score": r["score"],
+                "timestamp": meta.get("timestamp", 0),
+                "full_text": full_text,
+            })
+        return enriched
+
+    # ── 读取 ────────────────────────────────────────────────────
+
+    def has_content(self, text: str) -> bool:
+        """
+        该文本是否已入库（内容哈希查询，O(1)，不读条目文件）。
+
+        供 /v1 代理的补录窗口做"未入库"判定（B1 修复）：
+        补录前先剔除已入库内容，避免重复内容挤占补录名额。
+        """
+        content_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        with self._content_lock:
+            return content_hash in self._content_index
+
+    def get_full_text(self, entry_id: str) -> Optional[str]:
+        """按 entry_id 获取完整全文"""
+        record = self._text_store.load(entry_id)
+        if record:
+            return record.get("full_text")
+        return None
+
+    def get_ingest_result(self, entry_id: str) -> Optional[dict]:
+        """读取该条目上次完整入库的结果（内容去重时直接复用）"""
+        record = self._text_store.load(entry_id)
+        if record:
+            return record.get("ingest_result")
+        return None
+
+    def save_ingest_result(self, entry_id: str, result: dict) -> None:
+        """三级写入全部成功后记录结果，配合内容去重保证 ingest 幂等"""
+        record = self._text_store.load(entry_id)
+        if record:
+            record["ingest_result"] = result
+            self._text_store.save(entry_id, record)
+
+    def get_metadata(self, entry_id: str) -> Optional[dict]:
+        """按 entry_id 获取元数据"""
+        record = self._text_store.load(entry_id)
+        if record:
+            return record.get("meta")
+        return None
+
+    def list_entries(self) -> list[str]:
+        """列出所有缓存条目 ID"""
+        return self._text_store.list_keys(prefix="cc_")
+
+    def count(self) -> int:
+        """缓存条目总数"""
+        return self._text_store.count(prefix="cc_")

@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hierarchical-retrieval"
+version = "0.5.0"
+description = "分级检索开发工具包 — 全文缓存 + 关键句库 + 话题界域三级架构，兼容 nomic-embed-text"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [
+    { name = "hierarchical-retrieval" },
+]
+keywords = [
+    "retrieval",
+    "embedding",
+    "nomic-embed-text",
+    "memory",
+    "rag",
+    "topic-domain",
+    "llm",
+    "context-management",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "numpy>=1.21.0",
+    "requests>=2.28.0",
+    "faiss-cpu>=1.7.4",
+]
+
+[project.optional-dependencies]
+gpu = ["faiss-gpu>=1.7.4"]
+api = [
+    "fastapi>=0.100.0",
+    "uvicorn[standard]>=0.23.0",
+    "pydantic>=2.0.0",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "build>=1.0",
+    "twine>=4.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["hierarchical_retrieval*"]
+exclude = ["demo_storage*", "tests*"]
+
+[tool.setuptools.package-data]
+hierarchical_retrieval = ["py.typed"]
