@@ -1,4 +1,4 @@
-# hierarchical-retrieval
+﻿# hierarchical-retrieval
 
 > 分级检索开发工具包 — 全文缓存 + 关键句库 + 话题界域三级架构，基于 Ollama 本地嵌入（默认 `bge-m3`，1024 维），在 prompt 体积有界的前提下扩展可检索的历史记忆容量。
 
@@ -227,7 +227,7 @@ python hierarchical_retrieval/examples/demo.py
 | `recent_turns_keep` | `6` | 近期原样保留的**消息条数**（约 3 轮对话） |
 | `compress_threshold_chars` | `3000` | 历史总字符超过该值才触发代理压缩 |
 | `chat_backend_url` | `http://localhost:11434` | 代理转发目标（本地 Ollama） |
-| `chat_model` | `glm4:9b` | 代理回退对话模型 |
+| `chat_model` | `""` (空) | 代理回退对话模型，需通过 `HR_CHAT_MODEL` 环境变量或代码设置 |
 
 **性能与代理保护**
 

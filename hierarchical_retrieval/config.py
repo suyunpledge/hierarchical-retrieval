@@ -1,4 +1,4 @@
-"""
+﻿"""
 全局配置模块
 """
 
@@ -44,7 +44,7 @@ class HConfig:
 
     # ── 对话后端（/v1 代理转发目标，默认本地 Ollama） ─────
     chat_backend_url: str = "http://localhost:11434"
-    chat_model: str = "glm4:9b"      # /v1 代理的回退对话模型（原默认 qwen2.5:7b 本机不存在，已改为本机已拉取的模型）
+    chat_model: str = ""  # /v1 代理的回退对话模型，通过 HR_CHAT_MODEL 环境变量或代码设置
 
     # ── 性能与代理保护 ─────────────────────────────────────
     embed_workers: int = 6               # 批量嵌入的并发线程数（Ollama 可并发）
