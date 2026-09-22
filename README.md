@@ -1,6 +1,6 @@
 # hierarchical-retrieval
 
-> A hierarchical-retrieval developer toolkit — a three-tier architecture (full-text cache + key-sentence library + topic domains) built on local Ollama embeddings (default `bge-m3`, 1024-dim), extending the amount of retrievable historical memory while keeping prompt size bounded.
+> A developer toolkit for hierarchical retrieval. It uses three tiers—full-text cache, key-sentence library, and topic domains—on top of local Ollama embeddings (default: `bge-m3`, 1024 dimensions) to expand retrievable history while keeping prompt size bounded. [中文文档](README.zh.md)
 
 [![Python](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -30,7 +30,7 @@
 
 ## Background & Motivation
 
-Today's large language models (e.g. DeepSeek) have made significant progress on long-context memory — a 1M context window is a major advantage — but several fundamental problems remain:
+Modern LLMs, including models with very large context windows, have improved long-context handling substantially. They still face several fundamental memory and retrieval problems:
 
 | Problem | Symptom |
 |------|------|
@@ -39,7 +39,7 @@ Today's large language models (e.g. DeepSeek) have made significant progress on 
 | **Detail loss & recall difficulty** | Long-text memory suffers from information decay |
 | **Topic interference** | Unrelated topics get mixed in, confusing recall |
 
-**Hierarchical retrieval** stores information in tiers and isolates retrieval by topic, so "context length" is spent only within the key-sentence library relevant to the current topic — extending the amount of retrievable historical memory without changing the model itself.
+**Hierarchical retrieval** stores information in tiers and scopes retrieval by topic. The prompt budget is therefore spent on key sentences relevant to the active domain, extending retrievable history without modifying the underlying model.
 
 > Quantification note (as of v0.3): whether hierarchical retrieval actually helps depends on the **retrieval hit rate**, and that needs to be benchmarked against real corpora before quoting a number. The docs no longer cite unverified multiplier estimates (v0.2 once claimed "1M can be used as 100M," which was unfounded and has since been removed). The one hard, verifiable metric is that the `/v1` chat-proxy prompt size is **structurally bounded** — header prompt + memory block (≤ `context_char_budget`) + last K messages (also capped into the same budget, with any single overlong message truncated on assembly) — independent of history length.
 
