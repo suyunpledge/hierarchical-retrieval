@@ -65,19 +65,18 @@ This way, "context length" only comes into play within the key-sentence library 
 ## Architecture Overview
 
 ```mermaid
-flowchart TD
-    A["Conversation history"] --> B["L1 · Store full text locally"]
-    B --> C["L2 · Extract key sentences"]
-    C --> D["L3 · Assign topic domain"]
-    Q["New query"] --> E["L3 · Find relevant domain"]
-    E --> F["L2 · Match key sentences"]
-    E -- "No match or too few hits" --> G["Global key-sentence fallback"]
-    G --> F
-    D -. "Domain index" .-> E
-    C -. "Sentence index" .-> F
-    F -- "source_entry_id" --> H["L1 · Retrieve linked source passages"]
-    B -. "Stored originals" .-> H
-    H --> R["Topic + key sentences + source passages"]
+flowchart TB
+    R(("Hierarchical retrieval")) --- W(("Store history"))
+    W --- W1(("L1 Full text"))
+    W1 --- W2(("L2 Key sentences"))
+    W2 --- W3(("L3 Topic domains"))
+    R --- Q(("Recall for a query"))
+    Q --- Q1(("Match topic"))
+    Q1 --- Q2(("Search key sentences"))
+    Q2 --- Q3(("Link to source passage"))
+    R --- O(("Result"))
+    O --- O1(("Relevant evidence"))
+    O --- O2(("Bounded chat context"))
 ```
 
 **What changes:** conversation history stays on disk; a query narrows by topic, finds key sentences, and follows their `source_entry_id` back to the original passage. If domain results are missing or insufficient, the search uses the global key-sentence index. The `/v1` chat proxy then assembles a bounded memory block and recent-message context; retrieval relevance still depends on the corpus and thresholds.
