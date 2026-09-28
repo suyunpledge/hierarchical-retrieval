@@ -64,49 +64,23 @@ This way, "context length" only comes into play within the key-sentence library 
 
 ## Architecture Overview
 
+```mermaid
+flowchart TD
+    A["Conversation history"] --> B["L1 · Store full text locally"]
+    B --> C["L2 · Extract key sentences"]
+    C --> D["L3 · Assign topic domain"]
+    Q["New query"] --> E["L3 · Find relevant domain"]
+    E --> F["L2 · Search key sentences"]
+    E -- "No match or too few hits" --> G["Global key-sentence fallback"]
+    G --> F
+    D -. "Domain index" .-> E
+    C -. "Sentence index" .-> F
+    F -- "source_entry_id" --> H["L1 · Retrieve linked source passages"]
+    B -. "Stored originals" .-> H
+    H --> R["Topic + key sentences + source passages"]
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        Query                                 │
-└──────────────────────────┬──────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────┐
-│  L3  Topic Domains (TopicDomainManager)                     │
-│  ── Detects which topic the query belongs to, narrows scope │
-│  ┌────────────┐ ┌────────────┐ ┌────────────┐              │
-│  │ Domain A   │ │ Domain B   │ │ Domain C   │  ...         │
-│  └─────┬──────┘ └────────────┘ └────────────┘              │
-│        │ Hit domain                                          │
-└────────┼────────────────────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────────────────────────┐
-│  L2  Key-Sentence Library (KeySentenceLibrary)               │
-│  ── Retrieves most relevant key sentences within the domain  │
-│  ┌──────────────────────────────────────────┐               │
-│  │ "Adopted microservices architecture..." (score 0.74)     │
-│  │ "Database uses PostgreSQL..."  (score 0.68)               │
-│  │ "API Gateway routing..."  (score 0.61)                    │
-│  └──────────────────┬───────────────────────┘               │
-│                     │ Key sentence links source_entry_id     │
-└─────────────────────┼───────────────────────────────────────┘
-                       │
-                       ▼
-┌─────────────────────────────────────────────────────────────┐
-│  L1  Full-Text Cache (CloudCache, local disk)                │
-│  ── Links back to full-text passages via key sentences       │
-│  ┌──────────────────────────────────────────┐               │
-│  │ entry_id: cc_xxx  chunk: 0  full text...  │               │
-│  │ entry_id: cc_yyy  chunk: 1  full text...  │               │
-│  └──────────────────────────────────────────┘               │
-└─────────────────────────────────────────────────────────────┘
-                       │
-                       ▼
-┌─────────────────────────────────────────────────────────────┐
-│  Aggregated result: { topic domain, key sentences, full-text │
-│  passages, summary }                                          │
-└─────────────────────────────────────────────────────────────┘
-```
+
+**What changes:** conversation history stays on disk; a query narrows by topic, finds key sentences, and follows their `source_entry_id` back to the original passage. If domain results are missing or insufficient, the search uses the global key-sentence index. The `/v1` chat proxy then assembles a bounded memory block and recent-message context; retrieval relevance still depends on the corpus and thresholds.
 
 ---
 
