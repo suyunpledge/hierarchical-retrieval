@@ -70,7 +70,7 @@ flowchart TD
     B --> C["L2 · Extract key sentences"]
     C --> D["L3 · Assign topic domain"]
     Q["New query"] --> E["L3 · Find relevant domain"]
-    E --> F["L2 · Search key sentences"]
+    E --> F["L2 · Match key sentences"]
     E -- "No match or too few hits" --> G["Global key-sentence fallback"]
     G --> F
     D -. "Domain index" .-> E
