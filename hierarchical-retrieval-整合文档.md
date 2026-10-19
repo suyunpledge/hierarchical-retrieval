@@ -206,10 +206,11 @@ hierarchical_retrieval = ["py.typed"]
 ## requirements_api.txt
 
 ```text
+# API 服务「额外」依赖：仅含 API 层，核心依赖（numpy/requests/faiss-cpu）见 pyproject.toml。
+# 标准安装：pip install -e ".[api]"；单独用本文件前须先 pip install -e .
 fastapi>=0.100.0
 uvicorn[standard]>=0.23.0
 pydantic>=2.0.0
-httpx>=0.24.0
 ```
 
 ---
