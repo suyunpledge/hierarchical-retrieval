@@ -13,6 +13,7 @@ class HConfig:
     # ── Embedding 服务 ──────────────────────────────────────────
     embedding_model: str = "bge-m3:latest"
     embedding_dim: int = 1024          # bge-m3 输出维度（中文/多语）
+    embedding_backend: str = "auto"   # auto | ollama | openai（llama.cpp llama-server）
     embedding_base_url: str = "http://localhost:11434"
     embedding_request_timeout: int = 60
 

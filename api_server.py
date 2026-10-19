@@ -48,8 +48,12 @@ app.add_middleware(
 
 # ── 全局配置 ──────────────────────────────────────────
 STORAGE_ROOT = os.environ.get("HR_STORAGE_ROOT", "./hierarchical_api_storage")
-OLLAMA_URL = os.environ.get("HR_OLLAMA_URL", "http://localhost:11434")
+EMBED_URL = os.environ.get("HR_EMBED_URL", os.environ.get("HR_OLLAMA_URL", "http://localhost:11434"))
+EMBED_BACKEND = os.environ.get("HR_EMBED_BACKEND", "auto")  # auto | ollama | openai(llama.cpp)
 CHAT_MODEL = os.environ.get("HR_CHAT_MODEL", "")  # /v1 代理的回退对话模型
+CHAT_BACKEND_URL = os.environ.get("HR_CHAT_BACKEND", EMBED_URL)
+# 对话后端协议：1/0 强制 OpenAI/Ollama 协议；auto（默认）跟随嵌入后端探测结果
+CHAT_BACKEND_OPENAI = os.environ.get("HR_CHAT_BACKEND_OPENAI", "auto")
 # B3 修复：可选 Bearer 鉴权。设置 HR_API_TOKEN 后，除 /health 外的
 # 接口要求 Authorization: Bearer <token>（LobeChat 侧把 API Key 填成
 # 同名值即可）。默认为空 = 不鉴权（保持仅本机监听的默认形态）。
@@ -57,8 +61,9 @@ API_TOKEN = os.environ.get("HR_API_TOKEN", "")
 
 config = HConfig(
     storage_root=STORAGE_ROOT,
-    embedding_base_url=OLLAMA_URL,
-    chat_backend_url=os.environ.get("HR_CHAT_BACKEND", OLLAMA_URL),
+    embedding_base_url=EMBED_URL,
+    embedding_backend=EMBED_BACKEND,
+    chat_backend_url=CHAT_BACKEND_URL,
     # M6 修复：API 服务主要跑中文对话，显式采用中文场景的相似度阈值，
     # 避免沿用英文默认阈值导致对话被误并入同一话题域、L3 形同虚设。
     topic_min_similarity=0.70,
@@ -69,7 +74,8 @@ if CHAT_MODEL:
     config.chat_model = CHAT_MODEL
 
 logger.info(f"[启动] 存储目录: {STORAGE_ROOT}")
-logger.info(f"[启动] Embedding 服务: {OLLAMA_URL}")
+logger.info(f"[启动] Embedding 服务: {EMBED_URL} (backend={EMBED_BACKEND})")
+logger.info(f"[启动] 对话后端: {CHAT_BACKEND_URL} (openai协议={CHAT_BACKEND_OPENAI})")
 
 # 检索引擎（全局单例，惰性初始化）。
 # v0.4 修复：import 本模块不再立即构建引擎——此前单元测试 import
@@ -133,6 +139,7 @@ class HealthResponse(BaseModel):
     status: str
     ollama_url: str
     storage_root: str
+    embedding_backend: str = ""
 
 
 class ChatMessage(BaseModel):
@@ -153,10 +160,12 @@ class ChatCompletionRequest(BaseModel):
 @app.get("/health", response_model=HealthResponse)
 def health_check():
     """健康检查"""
+    emb = get_hr().embedding
     return HealthResponse(
         status="ok",
         ollama_url=config.embedding_base_url,
         storage_root=STORAGE_ROOT,
+        embedding_backend=getattr(emb, "backend", "unknown"),
     )
 
 
@@ -170,6 +179,27 @@ def health_check():
 
 # M5.1：单条超长消息截断装配时追加的尾部标记（9 字符）
 TRUNC_MARK = "（原文过长已截断）"
+
+
+# ── 对话后端协议判定 ──────────────────────────────
+
+def _chat_backend_is_openai() -> bool:
+    """
+    判定对话后端走 OpenAI 协议（/v1/chat/completions）还是 Ollama 协议（/api/chat）。
+
+    HR_CHAT_BACKEND_OPENAI: 1/true → 强制 OpenAI；0/false → 强制 Ollama；
+    auto（默认）→ 跟随嵌入后端探测结果（同一服务既出嵌入又出对话时，
+    嵌入探测结果即可代表该服务的协议）。
+    """
+    flag = CHAT_BACKEND_OPENAI.strip().lower()
+    if flag in ("1", "true", "yes", "on"):
+        return True
+    if flag in ("0", "false", "no", "off"):
+        return False
+    try:
+        return get_hr().embedding.backend != "ollama"
+    except Exception:
+        return True
 
 
 def _compress_history(messages: List[ChatMessage]) -> List[ChatMessage]:
@@ -256,14 +286,24 @@ def _compress_history(messages: List[ChatMessage]) -> List[ChatMessage]:
 
 @app.get("/v1/models", dependencies=[Depends(verify_token)])
 def list_models():
-    """OpenAI 兼容模型列表（透传后端 Ollama），供客户端探测"""
+    """OpenAI 兼容模型列表（透传后端服务），供客户端探测"""
+    names: list[str] = []
     try:
-        resp = requests.get(
-            f"{config.chat_backend_url.rstrip('/')}/api/tags", timeout=5
-        )
-        resp.raise_for_status()
-        names = [m.get("name", "") for m in resp.json().get("models", [])]
+        if _chat_backend_is_openai():
+            resp = requests.get(
+                f"{config.chat_backend_url.rstrip('/')}/v1/models", timeout=5
+            )
+            resp.raise_for_status()
+            names = [m.get("id", "") for m in resp.json().get("data", [])]
+        else:
+            resp = requests.get(
+                f"{config.chat_backend_url.rstrip('/')}/api/tags", timeout=5
+            )
+            resp.raise_for_status()
+            names = [m.get("name", "") for m in resp.json().get("models", [])]
     except Exception:
+        pass
+    if not names:
         names = [config.chat_model]
     return {
         "object": "list",
@@ -274,24 +314,40 @@ def list_models():
 @app.post("/v1/chat/completions", dependencies=[Depends(verify_token)])
 def chat_completions(req: ChatCompletionRequest):
     """
-    OpenAI 兼容对话代理：压缩历史 → 转发本地后端（默认 Ollama /api/chat）。
+    OpenAI 兼容对话代理：压缩历史 → 转发本地后端（llama.cpp /v1 或 Ollama /api/chat）。
 
     LobeChat 接入：添加自定义 OpenAI 服务商，API 地址填
-    http://localhost:8000/v1 ，模型名填本地 Ollama 的对话模型。
+    http://localhost:8000/v1 ，模型名填本地后端的对话模型
+    （llama.cpp 后端下模型名不校验，实际模型由 llama-server -m 启动参数决定）。
     """
     model = req.model or config.chat_model
     messages = _compress_history(req.messages)
-    payload = {
-        "model": model,
-        "messages": [{"role": m.role, "content": m.content} for m in messages],
-        "stream": req.stream,
-    }
-    if req.temperature is not None:
-        payload.setdefault("options", {})["temperature"] = req.temperature
-    if req.max_tokens is not None:
-        payload.setdefault("options", {})["num_predict"] = req.max_tokens
 
-    backend = config.chat_backend_url.rstrip("/") + "/api/chat"
+    backend_openai = _chat_backend_is_openai()
+    if backend_openai:
+        # OpenAI 协议（llama.cpp 等）：messages 透传，temperature/max_tokens 原样下发
+        payload = {
+            "model": model,
+            "messages": [{"role": m.role, "content": m.content} for m in messages],
+            "stream": req.stream,
+        }
+        if req.temperature is not None:
+            payload["temperature"] = req.temperature
+        if req.max_tokens is not None:
+            payload["max_tokens"] = req.max_tokens
+        backend = config.chat_backend_url.rstrip("/") + "/v1/chat/completions"
+    else:
+        # Ollama 协议：options 包装 + NDJSON 流
+        payload = {
+            "model": model,
+            "messages": [{"role": m.role, "content": m.content} for m in messages],
+            "stream": req.stream,
+        }
+        if req.temperature is not None:
+            payload.setdefault("options", {})["temperature"] = req.temperature
+        if req.max_tokens is not None:
+            payload.setdefault("options", {})["num_predict"] = req.max_tokens
+        backend = config.chat_backend_url.rstrip("/") + "/api/chat"
 
     if not req.stream:
         try:
@@ -300,7 +356,10 @@ def chat_completions(req: ChatCompletionRequest):
             data = resp.json()
         except requests.RequestException as e:
             raise HTTPException(status_code=502, detail=f"后端模型服务不可达: {e}")
-        content = data.get("message", {}).get("content", "")
+        if backend_openai:
+            content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+        else:
+            content = data.get("message", {}).get("content", "")
         return {
             "id": f"chatcmpl-hr-{uuid.uuid4().hex[:12]}",
             "object": "chat.completion",
@@ -314,7 +373,7 @@ def chat_completions(req: ChatCompletionRequest):
             "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
         }
 
-    # 流式：Ollama NDJSON → OpenAI SSE
+    # 流式：后端 NDJSON（Ollama）或 SSE（OpenAI/llama.cpp）→ OpenAI SSE
     def gen():
         cid = f"chatcmpl-hr-{uuid.uuid4().hex[:12]}"
         try:
@@ -323,11 +382,24 @@ def chat_completions(req: ChatCompletionRequest):
                 for line in r.iter_lines(decode_unicode=True):
                     if not line:
                         continue
-                    try:
-                        chunk = json.loads(line)
-                    except Exception:
-                        continue
-                    piece = chunk.get("message", {}).get("content", "")
+                    piece = ""
+                    if line.startswith("data:"):
+                        # OpenAI / llama.cpp SSE 行
+                        raw = line[5:].strip()
+                        if raw == "[DONE]":
+                            break
+                        try:
+                            chunk = json.loads(raw)
+                        except Exception:
+                            continue
+                        piece = chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                    else:
+                        # Ollama NDJSON 行
+                        try:
+                            chunk = json.loads(line)
+                        except Exception:
+                            continue
+                        piece = chunk.get("message", {}).get("content", "")
                     if not piece:
                         continue
                     sse = {
