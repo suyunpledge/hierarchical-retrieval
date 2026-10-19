@@ -1,4 +1,4 @@
-"""
+﻿"""
 hierarchical_retrieval — 分级检索开发工具包
 
 基于"全文缓存 + 关键句库 + 话题界域"三级架构，
@@ -14,7 +14,7 @@ hierarchical_retrieval — 分级检索开发工具包
     print(result["summary"])
 """
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 __author__ = "hierarchical-retrieval"
 
 from .config import HConfig

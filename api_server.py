@@ -1,4 +1,4 @@
-"""
+﻿"""
 分级检索 API 服务 (FastAPI)
 将 HierarchicalRetrieval 暴露为 HTTP 接口，并提供 OpenAI 兼容的
 /v1/chat/completions 对话代理：长历史在代理处被压缩为
@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="分级检索 API",
     description="基于本地嵌入模型（默认 bge-m3）的三级架构检索服务 (CloudCache + KeySentence + TopicDomain) + OpenAI 兼容上下文压缩代理",
-    version="0.5.0",
+    version="0.6.0",
 )
 
 # 允许跨域（方便前端或测试工具调用）。
