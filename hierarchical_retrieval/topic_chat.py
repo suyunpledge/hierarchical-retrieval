@@ -228,13 +228,21 @@ def prepare_turn(mode, incoming, model, root, budget, *, temperature=None, max_t
     from .core.chapter_history import chapter_history
 
     named = None
-    if chapter_cache and os.getenv("HR_WHOLE_CHAPTER_HISTORY", "0") == "1" and not route.get("reading"):
-        named = _focused_chapter(route["question"])
+    if (
+        chapter_cache
+        and os.getenv("HR_WHOLE_CHAPTER_HISTORY", "1") == "1"
+        and not (route.get("reading") or mode.position or mode.source)
+    ):
+        named = _focused_chapter(user)
+        # A clarification can prepend an older question. Both must still refer
+        # to a single chapter before replacing retrieval with its full text.
+        if named and route["question"] != user.strip() and _focused_chapter(route["question"]) != named:
+            named = None
     snapshot = workspace_call(store.snapshot, wid, topic, include_events=bool(named))
     assembled = None
-    if named and not (mode.position or mode.source or snapshot.get("position")):
-        setting = os.getenv("HR_CHAPTER_QA_WINDOW", "all")
-        window = int(setting) if setting in ("0", "1", "2") else None
+    if named and not snapshot.get("position"):
+        setting = os.getenv("HR_CHAPTER_QA_WINDOW", "2")
+        window = {"0": 0, "1": 1, "2": 2, "all": None}.get(setting, 2)
         assembled = chapter_history(
             named, snapshot["events"], system, route["question"], budget, qa_window=window,
             recover_edition=os.getenv("HR_CHAPTER_EDITION_ANCHOR", "0") == "1",

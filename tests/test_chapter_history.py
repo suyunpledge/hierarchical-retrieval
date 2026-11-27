@@ -1,3 +1,5 @@
+import pytest
+
 from hierarchical_retrieval.core.chapter_history import chapter_history
 
 
@@ -47,7 +49,7 @@ def test_chapter_history_ambiguous_source_and_unpaired_input_fall_back():
     assert chapter_history("9", [source], [], "第9章？", 500) is None
 
 
-def test_proxy_sends_only_its_topic_history_and_can_disable_chapter_routing(monkeypatch, tmp_path):
+def test_proxy_defaults_to_two_exchanges_and_keeps_chapter_breakpoint_across_edits(monkeypatch, tmp_path):
     from types import SimpleNamespace
 
     import api_server
@@ -63,8 +65,8 @@ def test_proxy_sends_only_its_topic_history_and_can_disable_chapter_routing(monk
             json=lambda: {"choices": [{"message": {"content": "读到了。"}, "finish_reason": "stop"}]},
         )
 
-    monkeypatch.setenv("HR_WHOLE_CHAPTER_HISTORY", "1")
-    monkeypatch.setenv("HR_OPENAI_CACHE_BREAKPOINTS", "1")
+    for name in ("HR_WHOLE_CHAPTER_HISTORY", "HR_CHAPTER_QA_WINDOW", "HR_OPENAI_CACHE_BREAKPOINTS"):
+        monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr(api_server.config, "storage_root", str(tmp_path))
     monkeypatch.setattr(api_server.config, "chat_backend_url", "https://api.openai.com/v1")
     monkeypatch.setattr(api_server, "_chat_backend_is_openai", lambda: True)
@@ -92,6 +94,10 @@ def test_proxy_sends_only_its_topic_history_and_can_disable_chapter_routing(monk
             return response.json()["topic_workspace"]
 
         assert chat("场景甲", "第九章谁落座？")["prefix_policy"] == "whole_chapter_history"
+        assert calls[-1]["messages"][1]["content"] == [{
+            "type": "text", "text": "第九章 场景甲\n他们重新落座。",
+            "prompt_cache_breakpoint": {"mode": "explicit"},
+        }]
         first_key = calls[-1]["prompt_cache_key"]
         chat("场景乙", "第九章讲了什么？")
         assert calls[-1]["prompt_cache_key"] != first_key
@@ -105,10 +111,19 @@ def test_proxy_sends_only_its_topic_history_and_can_disable_chapter_routing(monk
             "甲稿改为起身。",
             "第九章现在呢？",
         ]
+        chat("场景甲", "第九章原文怎么写？")
+        store.add_note("对稿", "场景甲", "甲稿再次更正为出门。")
+        chat("场景甲", "第九章最新稿呢？")
+        assert calls[-1]["messages"][1] == calls[0]["messages"][1]
+        assert [m["content"] for m in calls[-1]["messages"][2:]] == [
+            "甲稿改为起身。", "第九章现在呢？", "读到了。", "第九章原文怎么写？", "读到了。",
+            "甲稿再次更正为出门。", "第九章最新稿呢？",
+        ]
         monkeypatch.setenv("HR_CHAPTER_QA_WINDOW", "0")
         chat("场景甲", "第九章工作稿讲了什么？")
         assert [m["content"] for m in calls[-1]["messages"][2:]] == [
             "甲稿改为起身。",
+            "甲稿再次更正为出门。",
             "第九章工作稿讲了什么？",
         ]
         monkeypatch.setenv("HR_CHAPTER_QA_WINDOW", "all")
@@ -117,8 +132,63 @@ def test_proxy_sends_only_its_topic_history_and_can_disable_chapter_routing(monk
         assert calls[-1]["prompt_cache_key"] == first_key
         assert "第九章谁落座？" in [m["content"] for m in calls[-1]["messages"][2:]]
         monkeypatch.setenv("HR_WHOLE_CHAPTER_HISTORY", "0")
-        chat("场景甲", "再读第九章。")
+        assert chat("场景甲", "再读第九章。")["prefix_policy"] != "whole_chapter_history"
         assert "prompt_cache_key" not in calls[-1]
+        monkeypatch.delenv("HR_WHOLE_CHAPTER_HISTORY")
+        monkeypatch.setenv("HR_OPENAI_CACHE_BREAKPOINTS", "0")
+        assert chat("场景甲", "再读第九章。")["prefix_policy"] != "whole_chapter_history"
+        assert "prompt_cache_key" not in calls[-1]
+
+
+@pytest.mark.parametrize(("question", "budget"), [
+    ("他当时做了什么？", 2000),
+    ("第九章和第十章的动作一样吗？", 2000),
+    ("第九章与上一章的区别？", 2000),
+    ("第十一章谁落座？", 2000),
+    ("第九章谁落座？", 120),
+])
+def test_default_ineligible_turn_matches_existing_retrieval(monkeypatch, tmp_path, question, budget):
+    from api_server import ChatMessage
+    from hierarchical_retrieval.topic_chat import TopicMode, prepare_turn, workspace_store
+
+    monkeypatch.delenv("HR_WHOLE_CHAPTER_HISTORY", raising=False)
+    root = str(tmp_path)
+    store = workspace_store(root)
+    store.attach_source("校样", "窗边", "第九章 窗边\n" + "他们重新落座。" * 24, source="底稿")
+    store.add_note("校样", "窗边", "最新稿改为开窗。")
+    mode = TopicMode(workspace_id="校样", topic="窗边")
+    args = (mode, [ChatMessage(role="user", content=question)], "gpt-6.2-sol", root, budget)
+    baseline = prepare_turn(*args, cache_scope="test", chapter_cache=False)
+    candidate = prepare_turn(*args, cache_scope="test", chapter_cache=True)
+    assert candidate.metadata == baseline.metadata
+    assert candidate.openai_cache_messages() == baseline.openai_cache_messages()
+    assert candidate.prompt_cache_key is None
+
+
+@pytest.mark.parametrize(("clarification", "use_chapter"), [
+    ("我指的是甲稿。", False),
+    ("我指的是甲稿，第十章呢？", False),
+    ("我指的是甲稿的第九章。", True),
+])
+def test_clarification_requires_one_explicit_chapter_in_current_and_resolved_question(
+    monkeypatch, tmp_path, clarification, use_chapter,
+):
+    from api_server import ChatMessage
+    from hierarchical_retrieval.topic_chat import TopicMode, prepare_turn, workspace_store
+
+    monkeypatch.delenv("HR_WHOLE_CHAPTER_HISTORY", raising=False)
+    monkeypatch.delenv("HR_IMPLICIT_FOLLOWUPS", raising=False)
+    root = str(tmp_path)
+    store = workspace_store(root)
+    for topic in ("甲稿", "乙稿"):
+        store.attach_source("校样", topic, "第九章 窗边\n落座。\n第十章 桌旁\n起身。", source="底稿")
+    assert store.route("校样", "切回甲稿和乙稿，第九章做了什么？")["status"] == "clarify"
+    reply = prepare_turn(
+        TopicMode(workspace_id="校样", topic="甲稿"), [ChatMessage(role="user", content=clarification)],
+        "gpt-6.2-sol", root, 2000, cache_scope="test", chapter_cache=True,
+    )
+    assert reply.metadata["topic"] == "甲稿"
+    assert (reply.metadata["prefix_policy"] == "whole_chapter_history") == use_chapter
 
 
 def test_qa_window_preserves_source_edits_and_requested_earlier_answers():
