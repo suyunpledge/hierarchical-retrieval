@@ -1,0 +1,386 @@
+{
+  "split": "anchor-test",
+  "systems": {
+    "BA-12-1": {
+      "asks": 144,
+      "complete": 113,
+      "hits": 120,
+      "latest": 72,
+      "latest_complete": 59,
+      "input": 303497,
+      "read": 219595,
+      "write": 43919,
+      "ordinary": 39983,
+      "output": 3998,
+      "cost_units": 2117230,
+      "need": 48,
+      "restored": 48,
+      "restored_exchanges": 48,
+      "restored_instructions": 24,
+      "restored_chars": 5242,
+      "verbatim_notes": 216,
+      "original": 72,
+      "original_complete": 54,
+      "edition_followups": {
+        "asks": 96,
+        "complete": 73
+      },
+      "evidence": {
+        "already_present": {
+          "complete": 35,
+          "asks": 48
+        },
+        "missing": {
+          "complete": 38,
+          "asks": 48
+        }
+      },
+      "input_usd_per_ask": 0.001470298611111111,
+      "total_usd_per_complete": 0.0022274601769911506,
+      "original_chapter_mean": 0.75,
+      "latest_chapter_mean": 0.8194444444444443
+    },
+    "BA-24-1": {
+      "asks": 288,
+      "complete": 240,
+      "hits": 264,
+      "latest": 144,
+      "latest_complete": 129,
+      "input": 629345,
+      "read": 483021,
+      "write": 43911,
+      "ordinary": 102413,
+      "output": 8076,
+      "cost_units": 3629056,
+      "need": 108,
+      "restored": 108,
+      "restored_exchanges": 108,
+      "restored_instructions": 144,
+      "restored_chars": 14158,
+      "verbatim_notes": 672,
+      "original": 144,
+      "original_complete": 111,
+      "edition_followups": {
+        "asks": 204,
+        "complete": 170
+      },
+      "evidence": {
+        "already_present": {
+          "complete": 79,
+          "asks": 96
+        },
+        "missing": {
+          "complete": 91,
+          "asks": 108
+        }
+      },
+      "input_usd_per_ask": 0.0012600888888888888,
+      "total_usd_per_complete": 0.0018486066666666666,
+      "original_chapter_mean": 0.7708333333333334,
+      "latest_chapter_mean": 0.8958333333333334
+    },
+    "BH-12-1": {
+      "asks": 144,
+      "complete": 115,
+      "hits": 120,
+      "latest": 72,
+      "latest_complete": 62,
+      "input": 308937,
+      "read": 219655,
+      "write": 43931,
+      "ordinary": 45351,
+      "output": 3970,
+      "cost_units": 2224950,
+      "original": 72,
+      "original_complete": 53,
+      "edition_followups": {
+        "asks": 96,
+        "complete": 79
+      },
+      "evidence": {
+        "already_present": {
+          "complete": 38,
+          "asks": 48
+        },
+        "missing": {
+          "complete": 41,
+          "asks": 48
+        }
+      },
+      "input_usd_per_ask": 0.0015451041666666666,
+      "total_usd_per_complete": 0.0022799565217391307,
+      "original_chapter_mean": 0.736111111111111,
+      "latest_chapter_mean": 0.861111111111111
+    },
+    "BH-24-1": {
+      "asks": 288,
+      "complete": 228,
+      "hits": 264,
+      "latest": 144,
+      "latest_complete": 114,
+      "input": 690480,
+      "read": 483329,
+      "write": 43939,
+      "ordinary": 163212,
+      "output": 8030,
+      "cost_units": 4846044,
+      "original": 144,
+      "original_complete": 114,
+      "edition_followups": {
+        "asks": 204,
+        "complete": 159
+      },
+      "evidence": {
+        "already_present": {
+          "complete": 74,
+          "asks": 96
+        },
+        "missing": {
+          "complete": 85,
+          "asks": 108
+        }
+      },
+      "input_usd_per_ask": 0.0016826541666666666,
+      "total_usd_per_complete": 0.0024776508771929824,
+      "original_chapter_mean": 0.7916666666666666,
+      "latest_chapter_mean": 0.7916666666666666
+    },
+    "BT-12-1": {
+      "asks": 144,
+      "complete": 118,
+      "hits": 120,
+      "latest": 72,
+      "latest_complete": 59,
+      "input": 298739,
+      "read": 219635,
+      "write": 43927,
+      "ordinary": 35177,
+      "output": 4493,
+      "cost_units": 2021350,
+      "original": 72,
+      "original_complete": 59,
+      "edition_followups": {
+        "asks": 96,
+        "complete": 78
+      },
+      "evidence": {
+        "already_present": {
+          "complete": 37,
+          "asks": 48
+        },
+        "missing": {
+          "complete": 41,
+          "asks": 48
+        }
+      },
+      "input_usd_per_ask": 0.0014037152777777778,
+      "total_usd_per_complete": 0.002093771186440678,
+      "original_chapter_mean": 0.8194444444444443,
+      "latest_chapter_mean": 0.8194444444444443
+    },
+    "BT-24-1": {
+      "asks": 288,
+      "complete": 242,
+      "hits": 264,
+      "latest": 144,
+      "latest_complete": 131,
+      "input": 616100,
+      "read": 483329,
+      "write": 43939,
+      "ordinary": 88832,
+      "output": 8551,
+      "cost_units": 3358444,
+      "original": 144,
+      "original_complete": 111,
+      "edition_followups": {
+        "asks": 204,
+        "complete": 172
+      },
+      "evidence": {
+        "already_present": {
+          "complete": 79,
+          "asks": 96
+        },
+        "missing": {
+          "complete": 93,
+          "asks": 108
+        }
+      },
+      "input_usd_per_ask": 0.001166126388888889,
+      "total_usd_per_complete": 0.0017411338842975208,
+      "original_chapter_mean": 0.7708333333333334,
+      "latest_chapter_mean": 0.9097222222222223
+    },
+    "S0-12-1": {
+      "asks": 144,
+      "complete": 117,
+      "hits": 8,
+      "latest": 72,
+      "latest_complete": 63,
+      "input": 97146,
+      "read": 8804,
+      "write": 8019,
+      "ordinary": 80323,
+      "output": 4161,
+      "cost_units": 1815739,
+      "original": 72,
+      "original_complete": 54,
+      "edition_followups": {
+        "asks": 96,
+        "complete": 76
+      },
+      "evidence": {
+        "already_present": {
+          "complete": 38,
+          "asks": 48
+        },
+        "missing": {
+          "complete": 38,
+          "asks": 48
+        }
+      },
+      "input_usd_per_ask": 0.0012609298611111113,
+      "total_usd_per_complete": 0.0019075547008547008,
+      "original_chapter_mean": 0.75,
+      "latest_chapter_mean": 0.875
+    },
+    "S0-24-1": {
+      "asks": 288,
+      "complete": 239,
+      "hits": 53,
+      "latest": 144,
+      "latest_complete": 128,
+      "input": 257381,
+      "read": 74982,
+      "write": 45127,
+      "ordinary": 137272,
+      "output": 8828,
+      "cost_units": 3948597,
+      "original": 144,
+      "original_complete": 111,
+      "edition_followups": {
+        "asks": 204,
+        "complete": 166
+      },
+      "evidence": {
+        "already_present": {
+          "complete": 79,
+          "asks": 96
+        },
+        "missing": {
+          "complete": 87,
+          "asks": 108
+        }
+      },
+      "input_usd_per_ask": 0.001371040625,
+      "total_usd_per_complete": 0.002021505020920502,
+      "original_chapter_mean": 0.7708333333333334,
+      "latest_chapter_mean": 0.888888888888889
+    }
+  },
+  "paired_changes": {
+    "12": {
+      "strata": {
+        "already_present": {
+          "tied": 46,
+          "lost": 2
+        },
+        "missing": {
+          "gained": 3,
+          "lost": 6,
+          "tied": 39
+        }
+      },
+      "pairs": 12,
+      "edition_diff_interval": [
+        -0.11458333333333333,
+        0.0
+      ]
+    },
+    "24": {
+      "strata": {
+        "already_present": {
+          "tied": 90,
+          "lost": 3,
+          "gained": 3
+        },
+        "missing": {
+          "gained": 5,
+          "tied": 96,
+          "lost": 7
+        }
+      },
+      "pairs": 12,
+      "edition_diff_interval": [
+        -0.049019607843137254,
+        0.029411764705882353
+      ]
+    }
+  },
+  "question_audit_subset": {
+    "BA-12-1": {
+      "original": 27,
+      "original_complete": 18,
+      "latest": 27,
+      "latest_complete": 26,
+      "relative": 36,
+      "relative_complete": 30
+    },
+    "BA-24-1": {
+      "original": 54,
+      "original_complete": 35,
+      "latest": 54,
+      "latest_complete": 54,
+      "relative": 76,
+      "relative_complete": 64
+    },
+    "BH-12-1": {
+      "original": 27,
+      "original_complete": 17,
+      "latest": 27,
+      "latest_complete": 25,
+      "relative": 36,
+      "relative_complete": 30
+    },
+    "BH-24-1": {
+      "original": 54,
+      "original_complete": 37,
+      "latest": 54,
+      "latest_complete": 50,
+      "relative": 76,
+      "relative_complete": 62
+    },
+    "BT-12-1": {
+      "original": 27,
+      "original_complete": 20,
+      "latest": 27,
+      "latest_complete": 26,
+      "relative": 36,
+      "relative_complete": 30
+    },
+    "BT-24-1": {
+      "original": 54,
+      "original_complete": 37,
+      "latest": 54,
+      "latest_complete": 53,
+      "relative": 76,
+      "relative_complete": 64
+    },
+    "S0-12-1": {
+      "original": 27,
+      "original_complete": 22,
+      "latest": 27,
+      "latest_complete": 25,
+      "relative": 36,
+      "relative_complete": 31
+    },
+    "S0-24-1": {
+      "original": 54,
+      "original_complete": 49,
+      "latest": 54,
+      "latest_complete": 54,
+      "relative": 76,
+      "relative_complete": 71
+    }
+  }
+}
