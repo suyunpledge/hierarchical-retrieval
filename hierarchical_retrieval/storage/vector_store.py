@@ -4,12 +4,11 @@
 
 import json
 import os
-import pickle
 import logging
 import threading
 import uuid
 from pathlib import Path
-from typing import Optional
+from typing import Any, Iterable, Optional
 
 import numpy as np
 
@@ -88,16 +87,22 @@ class VectorStore(StorageBase):
     def _load_index(self):
         idx_path = self._index_path()
         meta_path = self._meta_path()
+        if idx_path.exists() != meta_path.exists():
+            raise RuntimeError("向量索引文件不完整，拒绝使用空索引覆盖已有数据")
         if idx_path.exists() and meta_path.exists():
-            import faiss
             try:
+                import faiss
                 self._index = faiss.read_index(str(idx_path))
                 meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                stored_dimension = int(meta.get("dimension", self.dimension))
+                if stored_dimension != self.dimension or self._index.d != stored_dimension:
+                    raise ValueError(
+                        f"向量索引维度不匹配: 索引={self._index.d}, 元数据={stored_dimension}, 配置={self.dimension}"
+                    )
                 self._id_map = meta["id_map"]
                 self._reverse_map = {int(k): v for k, v in meta["reverse_map"].items()}
                 self._metadata = meta["metadata"]
                 self._next_id = meta["next_id"]
-                self.dimension = meta.get("dimension", 768)
                 eti = meta.get("entry_to_ids")
                 if isinstance(eti, dict):
                     self._entry_to_ids = {k: list(v) for k, v in eti.items()}
@@ -110,8 +115,10 @@ class VectorStore(StorageBase):
                         fid = self._id_map.get(ext, -1)
                         if fid >= 0:
                             self._entry_to_ids.setdefault(eid, []).append(fid)
-            except Exception:
+                self._dirty = False
+            except Exception as e:
                 self._index = None
+                raise RuntimeError(f"加载向量索引失败，拒绝使用空索引覆盖已有数据: {e}") from e
 
     # ── 核心操作 ────────────────────────────────────────────────
 
@@ -120,6 +127,10 @@ class VectorStore(StorageBase):
         vec = np.asarray(vector, dtype=np.float32)
         if vec.ndim == 1:
             vec = vec[np.newaxis, :]
+        if vec.shape != (1, self.dimension) or not np.isfinite(vec).all():
+            raise ValueError(
+                f"向量维度/数值无效: 期望 ({self.dimension},)，实际 {vec.shape}"
+            )
         # 零向量防护（TRAE v0.2 补丁）: 嵌入服务失败时会产生零向量，
         # 写入会污染索引（与任何查询内积恒为 0，且占据 top_k 名额）
         if float(np.linalg.norm(vec)) < 1e-10:
@@ -129,6 +140,8 @@ class VectorStore(StorageBase):
             )
             return -1
         with self._lock:
+            if external_id in self._id_map:
+                return self._id_map[external_id]
             faiss_id = self._next_id
             self.index.add(vec)
             self._id_map[external_id] = faiss_id
@@ -139,32 +152,41 @@ class VectorStore(StorageBase):
             if entry_id:
                 self._entry_to_ids.setdefault(entry_id, []).append(faiss_id)
             self._dirty = True
+            self._save_index()
+            self._dirty = False
         return faiss_id
 
     def add_many(self, items: list[tuple[str, np.ndarray, Optional[dict]]]) -> None:
-        """
-        批量添加：一次 faiss.add + 一次落盘。
-        （add() 每条向量都全量重写索引与 metadata.json，一次 ingest
-       几十条向量就是几十次 O(n) 重写——这是此前写入慢的主因）
-        """
+        """批量添加：一次 FAISS 写入和一次持久化。"""
         if not items:
             return
-        # 零向量防护（TRAE v0.2 补丁）: 与 add() 同样的防线，批量入口也要拦
-        valid = [
-            (i, v, m) for i, v, m in items
-            if float(np.linalg.norm(np.asarray(v, dtype=np.float32))) >= 1e-10
-        ]
-        for (i, _v, _m) in items:
-            if all(i != vi for vi, _vv, _mm in valid):
-                logger.warning(
-                    "拒绝添加零向量 (id=%s): 嵌入服务可能异常，跳过以防索引污染", i
+        prepared = []
+        seen_ids = set()
+        for external_id, vector, metadata in items:
+            vec = np.asarray(vector, dtype=np.float32)
+            if external_id in seen_ids:
+                continue
+            if vec.ndim != 1 or vec.shape[0] != self.dimension or not np.isfinite(vec).all():
+                raise ValueError(
+                    f"向量维度/数值无效: id={external_id}, 期望 ({self.dimension},)，实际 {vec.shape}"
                 )
-        if not valid:
+            if float(np.linalg.norm(vec)) < 1e-10:
+                logger.warning(
+                    "拒绝添加零向量 (id=%s): 嵌入服务可能异常，跳过以防索引污染",
+                    external_id,
+                )
+                continue
+            seen_ids.add(external_id)
+            prepared.append((external_id, vec, metadata))
+        if not prepared:
             return
-        items = valid
-        vecs = np.vstack([np.asarray(v, dtype=np.float32) for _i, v, _m in items])
         with self._lock:
-            for (external_id, _v, metadata) in items:
+            items = [item for item in prepared if item[0] not in self._id_map]
+            if not items:
+                return
+            vecs = np.vstack([v for _i, v, _m in items]).astype(np.float32, copy=False)
+            self.index.add(vecs)
+            for external_id, _v, metadata in items:
                 faiss_id = self._next_id
                 self._next_id += 1
                 self._id_map[external_id] = faiss_id
@@ -173,8 +195,9 @@ class VectorStore(StorageBase):
                 entry_id = (metadata or {}).get("entry_id")
                 if entry_id:
                     self._entry_to_ids.setdefault(entry_id, []).append(faiss_id)
-            self.index.add(vecs)
+            self._dirty = True
             self._save_index()
+            self._dirty = False
 
     def flush(self) -> None:
         """脏标记落盘（原子写）。崩溃时最多丢失最近一批未 flush 的更新。"""
@@ -183,30 +206,40 @@ class VectorStore(StorageBase):
                 self._save_index()
                 self._dirty = False
 
+    def vectors_by_entry(self, entry_id: str) -> list[tuple[str, np.ndarray, dict]]:
+        """Read the vectors and metadata for one entry under the index lock."""
+        with self._lock:
+            return [
+                (ext_id, self.index.reconstruct(faiss_id), self._metadata[ext_id])
+                for faiss_id in self._entry_to_ids.get(entry_id, [])
+                if (ext_id := self._reverse_map.get(faiss_id)) is not None
+            ]
+
     def search_by_entry(self, query_vector: np.ndarray, entry_id: str, top_k: int = 3) -> list[dict]:
         """
         条目内检索（正排索引版）: 直接取该 entry_id 的全部向量做内积排序，
         复杂度 O(该条目向量数)，不再全库暴力扫描（N-perf 修复）。
         条目无向量时返回空列表，由调用方走回退逻辑。
         """
-        q = np.asarray(query_vector, dtype=np.float32).reshape(1, -1)
-        with self._lock:
-            faiss_ids = self._entry_to_ids.get(entry_id, [])
-            if not faiss_ids or self.index.ntotal == 0:
-                return []
-            vecs = np.vstack([self.index.reconstruct(int(f)) for f in faiss_ids])
+        if top_k <= 0:
+            return []
+        q = np.asarray(query_vector, dtype=np.float32)
+        if q.ndim != 1 or q.shape[0] != self.dimension or not np.isfinite(q).all():
+            return []
+        q = q.reshape(1, -1)
+        rows = self.vectors_by_entry(entry_id)
+        if not rows:
+            return []
+        vecs = np.vstack([vector for _, vector, _ in rows])
         scores = (vecs @ q.T).flatten()
         order = np.argsort(-scores)[:top_k]
         out = []
         for oi in order:
-            fid = int(faiss_ids[int(oi)])
-            ext = self._reverse_map.get(fid, "")
-            if not ext:
-                continue
+            ext, _, meta = rows[int(oi)]
             out.append({
                 "id": ext,
                 "score": float(scores[int(oi)]),
-                "metadata": self._metadata.get(ext, {}),
+                "metadata": meta,
             })
         return out
 
@@ -216,25 +249,35 @@ class VectorStore(StorageBase):
 
         返回: [{"id": str, "score": float, "metadata": dict}, ...]
         """
-        if self.index.ntotal == 0:
+        if top_k <= 0 or self.index.ntotal == 0:
             return []
         q = np.asarray(query_vector, dtype=np.float32)
         if q.ndim == 1:
             q = q[np.newaxis, :]
+        if q.shape != (1, self.dimension) or not np.isfinite(q).all():
+            return []
         with self._lock:
-            scores, indices = self.index.search(q, top_k)
-        results = []
-        for score, faiss_id in zip(scores[0], indices[0]):
-            if faiss_id == -1:
-                continue
-            ext_id = self._reverse_map.get(int(faiss_id), "")
-            if not ext_id:
-                continue
-            results.append({
-                "id": ext_id,
-                "score": float(score),
-                "metadata": self._metadata.get(ext_id, {}),
-            })
+            # delete() 只做逻辑删除，被删向量仍留在 FAISS 中并可能占据
+            # top_k 名额，导致实际返回远少于 top_k。按墓碑数量多取一些
+            # 再过滤，保证有效结果数不被回滚/删除操作吞掉。
+            ntotal = self.index.ntotal
+            tombstones = max(0, ntotal - len(self._id_map))
+            fetch_k = min(ntotal, top_k + tombstones)
+            scores, indices = self.index.search(q, fetch_k)
+            results = []
+            for score, faiss_id in zip(scores[0], indices[0]):
+                if faiss_id == -1:
+                    continue
+                ext_id = self._reverse_map.get(int(faiss_id), "")
+                if not ext_id:
+                    continue
+                results.append({
+                    "id": ext_id,
+                    "score": float(score),
+                    "metadata": self._metadata.get(ext_id, {}),
+                })
+                if len(results) >= top_k:
+                    break
         return results
 
     def get_metadata(self, external_id: str) -> Optional[dict]:
@@ -242,46 +285,60 @@ class VectorStore(StorageBase):
 
     def update_metadata(self, external_id: str, metadata: dict) -> bool:
         with self._lock:
-            if external_id in self._metadata:
-                self._metadata[external_id].update(metadata)
-                self._dirty = True
+            if external_id not in self._metadata:
+                return False
+            self._metadata[external_id].update(metadata)
+            self._dirty = True
         # N-review2: 低频写操作兜底落盘（锁外执行）
         try:
             self.flush()
         except Exception as _e:
             logger.warning(f"[VectorStore] update_metadata flush 失败: {_e}")
         return True
-        return False
 
     def delete(self, key: str) -> bool:
         """删除（当前 FAISS 不支持按 id 删除，仅标记清除）"""
+        return self.delete_many([key]) > 0
+
+    def delete_many(self, keys: Iterable[str]) -> int:
+        """批量逻辑删除，只落盘一次。返回实际删除的条数。
+
+        回滚路径一次要删几十个向量，逐条 delete() 会触发同样次数的
+        全量索引重写（O(n²) I/O）。
+        """
+        removed = 0
         with self._lock:
-            if key in self._id_map:
+            for key in keys:
+                if key not in self._id_map:
+                    continue
                 faiss_id = self._id_map.pop(key)
                 self._reverse_map.pop(faiss_id, None)
-                self._metadata.pop(key, None)
-                for eid, ids in list(self._entry_to_ids.items()):
-                    if faiss_id in ids:
-                        ids.remove(faiss_id)
-                        if not ids:
-                            self._entry_to_ids.pop(eid, None)
+                meta = self._metadata.pop(key, None) or {}
+                eid = meta.get("entry_id")
+                ids = self._entry_to_ids.get(eid) if eid else None
+                if ids is not None and faiss_id in ids:
+                    ids.remove(faiss_id)
+                    if not ids:
+                        self._entry_to_ids.pop(eid, None)
+                removed += 1
+            if removed:
                 self._dirty = True
         # N-review2: 低频写操作兜底落盘（锁外执行，避免锁内 I/O）
-        try:
-            self.flush()
-        except Exception as _e:
-            logger.warning(f"[VectorStore] delete flush 失败: {_e}")
-        return True
-        return False
+        if removed:
+            try:
+                self.flush()
+            except Exception as e:
+                logger.warning("[VectorStore] delete flush 失败: %s", e)
+        return removed
 
     # ── StorageBase 接口 ────────────────────────────────────────
 
-    def save(self, key: str, value: any) -> None:
+    def save(self, key: str, value: Any) -> None:
         """value 应为 {"vector": list, "metadata": dict}"""
         if isinstance(value, dict) and "vector" in value:
             self.add(key, np.array(value["vector"]), value.get("metadata"))
 
-    def load(self, key: str) -> Optional[any]:
+    def load(self, key: str) -> Optional[Any]:
         if key in self._metadata:
             return {"id": key, "metadata": self._metadata[key]}
         return None

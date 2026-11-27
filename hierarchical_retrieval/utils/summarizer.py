@@ -50,7 +50,11 @@ class KeySentenceExtractor:
         Returns:
             关键句列表（按重要性降序）
         """
-        max_s = max_sentences or self.config.max_key_sentences_per_chunk
+        max_s = self.config.max_key_sentences_per_chunk if max_sentences is None else max_sentences
+        if max_s < 0:
+            raise ValueError("max_sentences 必须是非负整数")
+        if max_s == 0:
+            return []
         sentences = TextProcessor.split_sentences(text)
         if len(sentences) <= max_s:
             return sentences
@@ -70,7 +74,7 @@ class KeySentenceExtractor:
 
         # 信号词加分
         for word, weight in self.SIGNAL_WORDS.items():
-            if word in sentence or word in s_lower:
+            if word in s_lower:
                 score += weight
 
         # 长度分（过短或过长都不是好关键句）

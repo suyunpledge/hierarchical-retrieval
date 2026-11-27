@@ -1,11 +1,11 @@
-﻿[build-system]
+[build-system]
 requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "hierarchical-retrieval"
-version = "0.6.0"
-description = "分级检索开发工具包 — 全文缓存 + 关键句库 + 话题界域三级架构，基于 Ollama 本地嵌入（默认 bge-m3）"
+version = "0.5.0"
+description = "分级检索开发工具包 — 全文缓存 + 关键句库 + 话题界域三级架构，兼容 nomic-embed-text"
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
@@ -15,7 +15,7 @@ authors = [
 keywords = [
     "retrieval",
     "embedding",
-    "bge-m3",
+    "nomic-embed-text",
     "memory",
     "rag",
     "topic-domain",

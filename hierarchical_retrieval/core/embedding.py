@@ -15,12 +15,16 @@ Embedding 服务 —— 双后端嵌入向量客户端（llama.cpp / Ollama）
 """
 
 import logging
+import threading
+from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
 import numpy as np
 import requests
 
 from ..config import HConfig
+from ..utils.text_processor import TextProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +81,7 @@ class NomicEmbedding:
             try:
                 resp = requests.get(f"{self._base_url}/api/tags", timeout=5)
                 if resp.status_code == 200:
-                    models = [m["name"] for m in resp.json().get("models", [])]
+                    models = [m.get("name", "") for m in resp.json().get("models", []) if isinstance(m, dict)]
                     if not any(self._model in m for m in models):
                         logger.warning(
                             "模型 %s 未在 Ollama 中找到，请先运行: ollama pull %s",
@@ -85,7 +89,7 @@ class NomicEmbedding:
                         )
                     else:
                         logger.info("Ollama 服务可用，模型 %s 已就绪", self._model)
-            except requests.ConnectionError:
+            except requests.RequestException:
                 logger.warning(
                     "无法连接到 Ollama 服务 (%s)，请确保已启动: ollama serve",
                     self._base_url,
@@ -97,6 +101,27 @@ class NomicEmbedding:
             )
 
     # ── 嵌入请求 ─────────────────────────────────────────────
+
+    def _coerce_vector(self, embedding, *, strict: bool) -> np.ndarray:
+        """Validate and normalize a backend vector before it reaches FAISS."""
+        try:
+            vec = np.asarray(embedding, dtype=np.float32)
+        except (TypeError, ValueError) as e:
+            if strict:
+                raise RuntimeError(f"Embedding 返回格式无效: {e}") from e
+            return np.zeros(self._dim, dtype=np.float32)
+        if vec.ndim != 1 or vec.shape[0] != self._dim or not np.isfinite(vec).all():
+            msg = f"Embedding 维度/数值无效: 期望 ({self._dim},)，实际 {vec.shape}"
+            if strict:
+                raise RuntimeError(msg)
+            logger.warning(msg)
+            return np.zeros(self._dim, dtype=np.float32)
+        norm = float(np.linalg.norm(vec))
+        if norm <= 1e-10:
+            if strict:
+                raise RuntimeError("Embedding 返回零向量")
+            return np.zeros(self._dim, dtype=np.float32)
+        return vec / norm
 
     def embed(self, text: str, strict: bool = False) -> np.ndarray:
         """
@@ -116,6 +141,88 @@ class NomicEmbedding:
                 raise ValueError("embed(): 输入文本为空")
             return np.zeros(self._dim, dtype=np.float32)
 
+        text = TextProcessor.normalize_query(text)
+        cache = self._cache_state()
+        if cache["capacity"] <= 0:
+            return self._embed_uncached(text, strict)
+
+        with cache["condition"]:
+            while True:
+                vec = cache["items"].get(text)
+                if vec is not None:
+                    cache["items"].move_to_end(text)
+                    cache["hits"] += 1
+                    return vec
+                if text not in cache["inflight"]:
+                    cache["misses"] += 1
+                    cache["inflight"].add(text)
+                    generation = cache["generation"]
+                    break
+                cache["condition"].wait()
+
+        try:
+            vec = self._embed_uncached(text, strict)
+            # 失败降级的零向量不缓存，服务恢复后仍可正常重试。
+            if self.is_valid(vec):
+                vec.setflags(write=False)
+                with cache["condition"]:
+                    if generation == cache["generation"]:
+                        cache["items"][text] = vec
+                        cache["items"].move_to_end(text)
+                        while len(cache["items"]) > cache["capacity"]:
+                            cache["items"].popitem(last=False)
+            return vec
+        finally:
+            with cache["condition"]:
+                cache["inflight"].discard(text)
+                cache["condition"].notify_all()
+
+    # ── 嵌入缓存 ─────────────────────────────────────────────
+    #
+    # 同一段文本在一次 ingest 里会被嵌入多遍（短消息时 chunk == 全文 ==
+    # 话题分配文本，关键句也常与 chunk 相同），检索时关键句锚点、重复/
+    # 重新生成的查询也会反复嵌入。进程内 LRU 让这些请求不再打到嵌入服务。
+
+    def _cache_state(self) -> dict:
+        """惰性创建缓存状态（测试替身子类可能不调用本类 __init__）。"""
+        state = self.__dict__.get("_embed_cache")
+        if state is None:
+            lock = threading.Lock()
+            state = self.__dict__.setdefault("_embed_cache", {
+                "items": OrderedDict(),
+                "lock": lock,
+                "condition": threading.Condition(lock),
+                "inflight": set(),
+                "generation": 0,
+                "capacity": max(0, int(getattr(self.config, "embedding_cache_size", 4096))),
+                "hits": 0,
+                "misses": 0,
+            })
+        return state
+
+    def cache_stats(self) -> dict:
+        """嵌入缓存统计：容量、当前条数、命中/未命中次数与命中率。"""
+        cache = self._cache_state()
+        with cache["lock"]:
+            hits, misses = cache["hits"], cache["misses"]
+            size = len(cache["items"])
+        total = hits + misses
+        return {
+            "capacity": cache["capacity"],
+            "size": size,
+            "hits": hits,
+            "misses": misses,
+            "hit_rate": round(hits / total, 4) if total else 0.0,
+        }
+
+    def clear_cache(self) -> None:
+        cache = self._cache_state()
+        with cache["condition"]:
+            cache["items"].clear()
+            cache["generation"] += 1
+
+    def _embed_uncached(self, text: str, strict: bool) -> np.ndarray:
+        """直接请求嵌入服务（不经缓存）。"""
         try:
             if self._backend == "ollama":
                 embedding = self._embed_ollama(text)
@@ -126,12 +233,7 @@ class NomicEmbedding:
                     raise RuntimeError("嵌入服务返回空 embedding")
                 logger.warning("嵌入服务返回空 embedding，使用零向量")
                 return np.zeros(self._dim, dtype=np.float32)
-            vec = np.array(embedding, dtype=np.float32)
-            # L2 归一化，使内积 = 余弦相似度，取值 [-1, 1]
-            norm = np.linalg.norm(vec)
-            if norm > 1e-10:
-                vec = vec / norm
-            return vec
+            return self._coerce_vector(embedding, strict=strict)
         except Exception as e:
             if strict:
                 raise RuntimeError(f"Embedding 服务不可用: {e}") from e
@@ -174,15 +276,25 @@ class NomicEmbedding:
         """
         if not texts:
             return []
-        workers = getattr(self.config, "embed_workers", 6)
-        from concurrent.futures import ThreadPoolExecutor
-        with ThreadPoolExecutor(max_workers=min(workers, len(texts))) as ex:
-            return list(ex.map(lambda t: self.embed(t, strict=strict), texts))
+        # 批内去重：同一文本只请求一次（并发线程同时 miss 同一文本时
+        # 缓存挡不住，会重复请求）
+        unique = list(dict.fromkeys(texts))
+        workers = max(1, int(getattr(self.config, "embed_workers", 6)))
+        with ThreadPoolExecutor(max_workers=min(workers, len(unique))) as ex:
+            vectors = dict(zip(unique, ex.map(lambda t: self.embed(t, strict=strict), unique)))
+        return [vectors[t] for t in texts]
 
     @staticmethod
     def is_valid(vec: np.ndarray) -> bool:
         """零向量（服务失败/空文本的降级产物）判否，查询路径据此兜底"""
-        return float(np.linalg.norm(vec)) > 1e-6
+        try:
+            return bool(
+                np.asarray(vec).ndim == 1
+                and np.isfinite(vec).all()
+                and float(np.linalg.norm(vec)) > 1e-6
+            )
+        except (TypeError, ValueError):
+            return False
 
     @property
     def dimension(self) -> int:
