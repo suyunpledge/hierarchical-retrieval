@@ -22,6 +22,7 @@
 - [背景与动机](#背景与动机)
 - [架构总览](#架构总览)
 - [安装与部署（llama.cpp 路线）](#安装与部署llamacpp-路线)
+- [运行回归测试](#运行回归测试)
 - [Ollama 路线（可选）](#ollama-路线可选)
 - [配置参数](#配置参数)
 - [API 参考](#api-参考)
@@ -228,6 +229,21 @@ schtasks /Create /TN "HREmbed-AutoStart" /SC ONLOGON /RL LIMITED `
 > 计划任务跑控制台程序必须套 `conhost.exe --headless`，否则 Win11 默认终端会闪窗。
 
 ---
+
+## 运行回归测试
+
+从仓库根目录创建独立的 Python 环境。以下命令已在 Windows x64、Python 3.12 上验证。
+
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e ".[api,dev]"
+.\.venv\Scripts\python.exe -m pip check
+.\.venv\Scripts\python.exe -m pytest -q
+```
+
+Linux 或 macOS 可用 `python3 -m venv .venv` 创建环境，后续命令把解释器路径换成 `.venv/bin/python`。
+
+基础依赖 `faiss-cpu` 提供 Python 模块 `faiss`，向量索引测试需要它。`api` 安装 FastAPI 等服务端依赖，`dev` 安装 pytest 和 TestClient 所用的 HTTPX。遇到 `ModuleNotFoundError: No module named 'faiss'` 时，用同一虚拟环境的解释器执行 `python -m pip install faiss-cpu`，再用 `python -c "import faiss; print(faiss.__version__)"` 核对。默认测试目录为 `tests/`，回归可在本地运行，无需模型 API 密钥。
 
 ## Ollama 路线（可选）
 
