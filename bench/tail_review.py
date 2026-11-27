@@ -19,16 +19,29 @@ def mimo_json(messages, budget, max_output):
     base = provider["base"].rstrip("/")
     if base != "https://token-plan-cn.xiaomimimo.com/v1" or provider["model"] != MODEL:
         raise ValueError("Expected the registered prepaid MiMo endpoint and model")
-    body = dict(model=MODEL, messages=messages, temperature=0, max_tokens=max_output,
-                thinking={"type":"disabled"}, response_format={"type":"json_object"})
+    body = dict(
+        model=MODEL,
+        messages=messages,
+        temperature=0,
+        max_tokens=max_output,
+        thinking={"type": "disabled"},
+        response_format={"type": "json_object"},
+    )
     for attempt in range(3):
         reservation = budget.reserve(body)
-        response = requests.post(
-            base + "/chat/completions",
-            json=body,
-            timeout=90,
-            headers={"Authorization": "Bearer " + provider["key"]},
-        )
+        try:
+            response = requests.post(
+                base + "/chat/completions",
+                json=body,
+                timeout=90,
+                headers={"Authorization": "Bearer " + provider["key"]},
+            )
+        except requests.RequestException:
+            # Delivery is unknown. Keep the existing reservation when retrying.
+            if attempt == 2:
+                raise
+            time.sleep(attempt + 1)
+            continue
         if response.ok:
             data = response.json()
             if data["model"] != MODEL:
@@ -58,7 +71,10 @@ def mimo_json(messages, budget, max_output):
 
 
 def mimo_judge(package, budget):
-    messages = [{"role": "system", "content": JUDGE}, {"role": "user", "content": json.dumps(package, ensure_ascii=False)}]
+    messages = [
+        {"role": "system", "content": JUDGE},
+        {"role": "user", "content": json.dumps(package, ensure_ascii=False)},
+    ]
     fields = ("correct", "stale", "unsupported", "uncertain")
     for _ in range(3):
         value = mimo_json(messages, budget, 220)

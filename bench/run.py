@@ -68,7 +68,7 @@ def study_arms(split):
     if split in ANCHOR_SPLITS:
         return {arm: (1,) for arm in ("S0", "BH", "BT", "BA")}
     if split in TAIL_SPLITS:
-        arms = ("S0", "BH", "BT", "BD", "BZ", "BA") if split == "tail-dev" else ("S0", "BH", "BT")
+        arms = ("S0", "BH", "BT", "BD", "BZ") if split == "tail-dev" else ("S0", "BH", "BT")
         return {arm: (1,) for arm in arms}
     if split in CHAPTER_SPLITS:
         return {"BH": (1,)}
@@ -127,7 +127,8 @@ def worker(args):
             verify_chapter_lock(args.output)
         if args.split in TAIL_SPLITS:
             if args.split in ANCHOR_SPLITS:
-                from version_anchor import paired_chapters, anchor_plan as tail_plan, verify_lock
+                from version_anchor import anchor_plan as tail_plan
+                from version_anchor import paired_chapters, verify_lock
             else:
                 from history_tail import paired_chapters, tail_plan, verify_lock
 

@@ -226,3 +226,41 @@ def test_interrupted_judge_batch_saves_completed_decisions_before_retry(tmp_path
         "b": verdict,
     }
     assert seen == ["outage"]
+
+
+def test_edition_recovery_only_enters_its_registered_comparison():
+    from run import study_arms
+
+    assert tuple(study_arms("tail-dev")) == ("S0", "BH", "BT", "BD", "BZ")
+    assert tuple(study_arms("tail-test")) == ("S0", "BH", "BT")
+    for split in ("anchor-dev", "anchor-test"):
+        assert tuple(study_arms(split)) == ("S0", "BH", "BT", "BA")
+
+
+def test_prepaid_judge_retries_an_unknown_delivery_without_releasing_its_reservation(tmp_path, monkeypatch):
+    import requests
+    import tail_review
+
+    provider = {"base": "https://token-plan-cn.xiaomimimo.com/v1", "model": tail_review.MODEL, "key": "test"}
+    monkeypatch.setattr(tail_review, "load_provider", lambda _: provider)
+    monkeypatch.setattr(tail_review.time, "sleep", lambda _: None)
+    success = requests.Response()
+    success.status_code = 200
+    success._content = json.dumps({
+        "id": "offline-test", "model": tail_review.MODEL, "usage": {"prompt_tokens": 20, "completion_tokens": 5},
+        "choices": [{"message": {"content": '{"answer": true}'}}],
+    }).encode()
+    outcomes = iter((requests.ConnectionError(), success))
+
+    def post(*args, **kwargs):
+        result = next(outcomes)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    monkeypatch.setattr(tail_review.requests, "post", post)
+    budget = Budget(tmp_path / "budget.sqlite", 1)
+    assert tail_review.mimo_json([{"role": "user", "content": "test"}], budget, 20) == {"answer": True}
+    with budget.connect() as db:
+        assert db.execute("SELECT count(*) FROM spends WHERE receipt IS NULL AND units > 0").fetchone() == (1,)
+        assert db.execute("SELECT units FROM spends WHERE receipt = 'tokenplan-offline-test'").fetchone() == (0,)
