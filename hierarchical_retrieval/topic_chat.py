@@ -235,7 +235,10 @@ def prepare_turn(mode, incoming, model, root, budget, *, temperature=None, max_t
     if named and not (mode.position or mode.source or snapshot.get("position")):
         setting = os.getenv("HR_CHAPTER_QA_WINDOW", "all")
         window = int(setting) if setting in ("0", "1", "2") else None
-        assembled = chapter_history(named, snapshot["events"], system, route["question"], budget, qa_window=window)
+        assembled = chapter_history(
+            named, snapshot["events"], system, route["question"], budget, qa_window=window,
+            recover_edition=os.getenv("HR_CHAPTER_EDITION_ANCHOR", "0") == "1",
+        )
     reading = route.get("reading")
     if reading and snapshot["revision"] != reading["branch_revision"]:
         raise HTTPException(409, "所选话题的依据已更新，请重试本轮请求")

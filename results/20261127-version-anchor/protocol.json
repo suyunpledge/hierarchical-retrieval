@@ -1,0 +1,41 @@
+{
+  "parent": "effc1fb",
+  "model": "gpt-6.2-sol",
+  "judge": "mimo-v2.6-flash, blind, prepaid; same conservative scoring as the previous reported 119/120 and 115/120",
+  "manifest_sha256": "0d1024b1c1cb3116defa61c022f03179b9f42fb97eac2785b4c2c1e0837ff362",
+  "fixture_lock_sha256": "c55d484f81e794c4043033bdd0a66a2a492ce3d6b119e56c7ef11e646aefef30",
+  "corpus": "first 2000000 characters, registered complete chapters",
+  "excluded_chapters": 465,
+  "dev_chapters": 4,
+  "held_chapters": 24,
+  "new_distractors": 28,
+  "horizons": [
+    12,
+    24
+  ],
+  "systems": [
+    "S0 ordinary retrieval",
+    "BH full topic QA",
+    "BT previous two ordinary QA",
+    "BA two QA plus evidence only for an unresolved version chain"
+  ],
+  "explicit_turns": [
+    1,
+    2,
+    3,
+    4,
+    13,
+    16,
+    20
+  ],
+  "unknown_horizon": true,
+  "selection": "Fixed treatment before new answers. Identical topic/correction script and seed state per arm. Independent sessions, real provider answers.",
+  "metrics": [
+    "version-dependent complete / all version-dependent; split missing anchor vs already visible",
+    "original and latest chapter-mean completeness",
+    "request hit rate; cached tokens / all input tokens",
+    "actual input USD / ask and (input + output) USD / credited answer"
+  ],
+  "decision": "Keep feature opt-in unless relative accuracy improves at both horizons, original and latest each decline no more than 3pp vs BT, and metered input <= 2x S0 for each horizon. Compare against full history as a reference.",
+  "cap_usd": 8
+}

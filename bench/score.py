@@ -157,7 +157,7 @@ def intervals(chapters):
     }
 
 
-def analyze(folder, split, partial=False, book=None, *, judge_workers=12, review=decisions):
+def analyze(folder, split, partial=False, book=None, *, judge_workers=12, review=decisions, on_scored=None):
     fixt = {}
     cases = dict(CASES)
     witnesses = dict(WITNESSES)
@@ -190,7 +190,7 @@ def analyze(folder, split, partial=False, book=None, *, judge_workers=12, review
     }
     cap = 8 if split in STAGE_SPLITS else 25
     for p in sorted(folder.glob("*/trace.json")):
-        m = re.fullmatch(r"(S[01]|B[012PXGHTDZ])-(.+)-(12|24)-r(\d+)", p.parent.name)
+        m = re.fullmatch(r"(S[01]|B[012PXGHTDZA])-(.+)-(12|24)-r(\d+)", p.parent.name)
         if not m or (m[2], (m[1], int(m[3]), int(m[4]))) not in expected:
             continue
         state = json.loads(p.read_text("utf8"))
@@ -315,6 +315,8 @@ def analyze(folder, split, partial=False, book=None, *, judge_workers=12, review
             stale = dec["stale"] and r["version"] is not None
             unsupported = dec["unsupported"] or bool(refinements)
             correct = correct and not unsupported
+        if on_scored is not None:
+            on_scored(k, r, correct, initial, dec, refinements)
         if split in STAGE_SPLITS and split not in SEALED_SPLITS:
             audited_rows.append(
                 dict(
@@ -377,6 +379,8 @@ def analyze(folder, split, partial=False, book=None, *, judge_workers=12, review
     comparison_arms = [] if split in CHAPTER_SPLITS else [base_arm]
     if split in TAIL_SPLITS:
         comparison_arms.append("BH")
+    if split.startswith("anchor-"):
+        comparison_arms.append("BT")
     for reference in comparison_arms:
         diffs = {}
         for (system, n, rep), ch in stats.items():
@@ -387,7 +391,7 @@ def analyze(folder, split, partial=False, book=None, *, judge_workers=12, review
                 {c: {m: v[m] - base[c][m] for m in METRICS} for c, v in ch.items()}
             )
         comparisons[f"difference_from_{reference}"] = diffs
-    if split not in ("chapter-test", "tail-test"):
+    if split not in ("chapter-test", "tail-test", "anchor-test"):
         (folder / (split + "-manual-review.json")).write_text(json.dumps(conflicts, ensure_ascii=False), "utf8")
     if audited_rows:
         (folder / (split + "-audited.json")).write_text(json.dumps(audited_rows, ensure_ascii=False), "utf8")

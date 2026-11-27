@@ -1,0 +1,31 @@
+{
+  "analysis": "Exploratory question-only review of phrasing, slot order and gold coverage. Performed during generation, before consulting held-out scores. The registered primary comparison retains all 24 chapters.",
+  "include": [
+    508,
+    824,
+    111,
+    665,
+    825,
+    176,
+    869,
+    252,
+    660
+  ],
+  "issues_by_chapter": {
+    "129": "The two forms request different slots",
+    "299": "Body part requested but gold encodes an action",
+    "437": "Multiple rooms requested and one is absent from gold",
+    "479": "Code name versus personal name",
+    "495": "Gold order reverses both question forms",
+    "557": "Speaking action versus tone",
+    "571": "Only one form asks about both men's actions",
+    "623": "First form asks who but leaves the furniture implicit",
+    "629": "Relative order flips between phrasings",
+    "641": "Two different required cards treated as interchangeable aliases",
+    "647": "Asks who, includes the action in the question",
+    "651": "Relative order flips between phrasings",
+    "676": "Action versus direction",
+    "806": "Question asks how but gold also requires the man's description",
+    "834": "Witness gives two abilities and gold covers one"
+  }
+}

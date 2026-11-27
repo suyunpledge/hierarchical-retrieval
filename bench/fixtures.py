@@ -53,7 +53,7 @@ def deepseek(messages, budget, max_output):
     return json.loads(data["choices"][0]["message"]["content"])
 
 
-def prepare(folder, book, *, split=None, cap=25):
+def prepare(folder, book, *, split=None, cap=25, author=deepseek):
     if split is None:
         split = json.loads((ROOT / "bench/splits.json").read_text("utf8"))
     if hashlib.sha256(book.read_text("utf-8-sig")[:2_000_000].encode()).hexdigest() != split["corpus_sha256"]:
@@ -107,7 +107,7 @@ def prepare(folder, book, *, split=None, cap=25):
             {"role": "user", "content": "\n".join(f"[{j}] {t}" for j, t in enumerate(paragraphs))},
         ]
         for attempt in range(8):
-            row = deepseek(messages, budget, 650)
+            row = author(messages, budget, 650)
             try:
                 j = row["index"]
                 assert isinstance(j, int) and 0 <= j < len(paragraphs)

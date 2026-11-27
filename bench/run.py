@@ -28,8 +28,9 @@ OUTCOME_PAIRS = {
     "radio-look": (206, 510),
 }
 CHAPTER_SPLITS = ("chapter-dev", "chapter-test")
-TAIL_SPLITS = ("tail-dev", "tail-test")
-SEALED_SPLITS = ("test", "chapter-test", "tail-test")
+ANCHOR_SPLITS = ("anchor-dev", "anchor-test")
+TAIL_SPLITS = ("tail-dev", "tail-test", *ANCHOR_SPLITS)
+SEALED_SPLITS = ("test", "chapter-test", "tail-test", "anchor-test")
 STAGE_SPLITS = ("regression", "prefix", "breakpoint", "outcome", *CHAPTER_SPLITS, *TAIL_SPLITS)
 
 
@@ -46,6 +47,10 @@ def outcome_cases():
 
 
 def study_pairs(split):
+    if split in ANCHOR_SPLITS:
+        from version_anchor import paired_chapters
+
+        return list(paired_chapters(split))
     if split in TAIL_SPLITS:
         from history_tail import paired_chapters
 
@@ -60,8 +65,10 @@ def study_pairs(split):
 
 
 def study_arms(split):
+    if split in ANCHOR_SPLITS:
+        return {arm: (1,) for arm in ("S0", "BH", "BT", "BA")}
     if split in TAIL_SPLITS:
-        arms = ("S0", "BH", "BT", "BD", "BZ") if split == "tail-dev" else ("S0", "BH", "BT")
+        arms = ("S0", "BH", "BT", "BD", "BZ", "BA") if split == "tail-dev" else ("S0", "BH", "BT")
         return {arm: (1,) for arm in arms}
     if split in CHAPTER_SPLITS:
         return {"BH": (1,)}
@@ -119,7 +126,10 @@ def worker(args):
         if args.split == "chapter-test":
             verify_chapter_lock(args.output)
         if args.split in TAIL_SPLITS:
-            from history_tail import paired_chapters, tail_plan, verify_lock
+            if args.split in ANCHOR_SPLITS:
+                from version_anchor import paired_chapters, anchor_plan as tail_plan, verify_lock
+            else:
+                from history_tail import paired_chapters, tail_plan, verify_lock
 
             verify_lock(args.output)
             pairs = paired_chapters(args.split)
@@ -159,11 +169,14 @@ def worker(args):
     if hashlib.sha256(corpus.encode()).hexdigest() != data["corpus_sha256"]:
         raise ValueError("Corpus fingerprint differs from the registered split.")
     study_split = args.split
-    os.environ["HR_WHOLE_CHAPTER_HISTORY"] = "1" if args.system in ("BH","BT","BD","BZ") else "0"
+    os.environ["HR_WHOLE_CHAPTER_HISTORY"] = "1" if args.system in ("BH","BT","BD","BZ","BA") else "0"
     window = {"BT": 1, "BD": 2, "BZ": 0}.get(args.system, "all")
     if study_split == "tail-test" and args.system == "BT":
         window = json.loads((args.output / "tail-choice.json").read_bytes())["window"]
+    if study_split in ANCHOR_SPLITS and args.system in ("BT","BA"):
+        window = 2
     os.environ["HR_CHAPTER_QA_WINDOW"] = str(window)
+    os.environ["HR_CHAPTER_EDITION_ANCHOR"] = "1" if args.system == "BA" else "0"
     args.capture_layout = study_split == "outcome"
     args.code = ROOT
     os.environ["HR_V1125_EVIDENCE_ORDER"] = "0" if args.system == "S1" and not args.seed else "1"
@@ -196,6 +209,9 @@ def worker(args):
         for name in ("history_tail.py", "tail_split.json", "fixtures.py", "score.py", "run.py",
                      "legacy/eval_version_detail.py", "legacy/eval_long_prefix_return.py"):
             budget.pin(name, hashlib.sha256((ROOT / "bench" / name).read_bytes()).hexdigest())
+        if study_split in ANCHOR_SPLITS:
+            for name in ("version_anchor.py", "anchor_split.json", "tail_review.py"):
+                budget.pin(name, hashlib.sha256((ROOT / "bench" / name).read_bytes()).hexdigest())
         budget.pin("tail-fixtures", hashlib.sha256((args.output / "fixtures.lock").read_bytes()).hexdigest())
         if study_split == "tail-test":
             budget.pin("tail-choice", hashlib.sha256((args.output / "tail-choice.json").read_bytes()).hexdigest())
@@ -230,7 +246,7 @@ def worker(args):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--system", choices=("S0", "S1", "B0", "B1", "B2", "BP", "BX", "BG", "BH", "BT", "BD", "BZ"), required=True)
+    parser.add_argument("--system", choices=("S0", "S1", "B0", "B1", "B2", "BP", "BX", "BG", "BH", "BT", "BD", "BZ", "BA"), required=True)
     parser.add_argument("--split", choices=("dev", "test", *STAGE_SPLITS), required=True)
     parser.add_argument("--questions", type=int, choices=(12, 24), required=True)
     parser.add_argument("--model", choices=[MODEL], required=True)
@@ -251,7 +267,7 @@ def main():
     if args.split in TAIL_SPLITS:
         if not args.seed and args.system not in study_arms(args.split):
             parser.error("The requested arm is outside the registered fresh-chapter split.")
-    elif args.system in ("BT", "BD", "BZ"):
+    elif args.system in ("BT", "BD", "BZ", "BA"):
         parser.error("Use a registered history-tail split for this comparison arm.")
     if args.book is None:
         paths = list((Path.home() / "Desktop/本地工作流/番茄爆款语料库").glob("十日终焉*.txt"))

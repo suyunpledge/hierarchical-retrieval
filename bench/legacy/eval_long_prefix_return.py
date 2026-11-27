@@ -250,7 +250,7 @@ def run(
     receipt = {}
 
     events = []
-    audit_chapter = args.mode in ("BH", "BT", "BD", "BZ")
+    audit_chapter = args.mode in ("BH", "BT", "BD", "BZ", "BA")
     if prompt_builder or audit_chapter:
         seed_rows = {
             row["id"]: row
@@ -283,7 +283,11 @@ def run(
         if audit_chapter and action == "ask":
             from chapter_study import audit_layout
 
-            if args.split.startswith("tail-"):
+            if args.split.startswith("anchor-"):
+                from version_anchor import audit_anchor
+
+                receipt.update(audit_anchor(json, docs[ch], ch, events, q, state["nonce"], args.mode))
+            elif args.split.startswith("tail-"):
                 from history_tail import audit_tail
 
                 receipt.update(audit_tail(json, docs[ch], ch, events, q, state["nonce"], args.mode))

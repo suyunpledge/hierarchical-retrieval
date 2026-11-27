@@ -1,0 +1,165 @@
+{
+  "asks": 120,
+  "two_complete": 115,
+  "full_complete": 119,
+  "missing_version_chain": 0,
+  "errors": [
+    {
+      "chapter": 188,
+      "turn": "q14",
+      "kept": [
+        "q9",
+        "q12"
+      ],
+      "omitted": [
+        "q2",
+        "q3",
+        "q6",
+        "q7"
+      ],
+      "explicit": "q12",
+      "previous": {
+        "credited": false,
+        "rule": false,
+        "review": {
+          "correct": true,
+          "stale": false,
+          "unsupported": false,
+          "uncertain": false
+        },
+        "veto": false
+      },
+      "full": {
+        "credited": true,
+        "rule": true,
+        "review": null,
+        "veto": false
+      }
+    },
+    {
+      "chapter": 842,
+      "turn": "q6",
+      "kept": [
+        "q2",
+        "q3"
+      ],
+      "omitted": [],
+      "explicit": "q3",
+      "previous": {
+        "credited": false,
+        "rule": true,
+        "review": {
+          "correct": false,
+          "stale": false,
+          "unsupported": false,
+          "uncertain": false
+        },
+        "veto": false
+      },
+      "full": {
+        "credited": true,
+        "rule": true,
+        "review": null,
+        "veto": false
+      }
+    },
+    {
+      "chapter": 868,
+      "turn": "q17",
+      "kept": [
+        "q14",
+        "q15"
+      ],
+      "omitted": [
+        "q2",
+        "q3",
+        "q6",
+        "q7",
+        "q9",
+        "q12"
+      ],
+      "explicit": "q15",
+      "previous": {
+        "credited": false,
+        "rule": true,
+        "review": {
+          "correct": false,
+          "stale": false,
+          "unsupported": true,
+          "uncertain": false
+        },
+        "veto": false
+      },
+      "full": {
+        "credited": false,
+        "rule": false,
+        "review": {
+          "correct": false,
+          "stale": false,
+          "unsupported": false,
+          "uncertain": false
+        },
+        "veto": false
+      }
+    },
+    {
+      "chapter": 9,
+      "turn": "q6",
+      "kept": [
+        "q2",
+        "q3"
+      ],
+      "omitted": [],
+      "explicit": "q3",
+      "previous": {
+        "credited": false,
+        "rule": true,
+        "review": {
+          "correct": false,
+          "stale": false,
+          "unsupported": true,
+          "uncertain": false
+        },
+        "veto": false
+      },
+      "full": {
+        "credited": true,
+        "rule": true,
+        "review": null,
+        "veto": false
+      }
+    },
+    {
+      "chapter": 9,
+      "turn": "q14",
+      "kept": [
+        "q9",
+        "q12"
+      ],
+      "omitted": [
+        "q2",
+        "q3",
+        "q6",
+        "q7"
+      ],
+      "explicit": "q12",
+      "previous": {
+        "credited": false,
+        "rule": true,
+        "review": {
+          "correct": false,
+          "stale": false,
+          "unsupported": true,
+          "uncertain": false
+        },
+        "veto": false
+      },
+      "full": {
+        "credited": true,
+        "rule": true,
+        "review": null,
+        "veto": false
+      }
+    }
+  ]
+}

@@ -14,22 +14,13 @@ from score import JUDGE, analyze, decisions
 MODEL = "mimo-v2.6-flash"
 
 
-def mimo_judge(package, budget):
+def mimo_json(messages, budget, max_output):
     provider = load_provider("mimo")
     base = provider["base"].rstrip("/")
     if base != "https://token-plan-cn.xiaomimimo.com/v1" or provider["model"] != MODEL:
         raise ValueError("Expected the registered prepaid MiMo endpoint and model")
-    body = dict(
-        model=MODEL,
-        messages=[
-            dict(role="system", content=JUDGE),
-            dict(role="user", content=json.dumps(package, ensure_ascii=False)),
-        ],
-        temperature=0,
-        max_tokens=220,
-        thinking={"type": "disabled"},
-        response_format={"type": "json_object"},
-    )
+    body = dict(model=MODEL, messages=messages, temperature=0, max_tokens=max_output,
+                thinking={"type":"disabled"}, response_format={"type":"json_object"})
     for attempt in range(3):
         reservation = budget.reserve(body)
         response = requests.post(
@@ -54,9 +45,8 @@ def mimo_judge(package, budget):
                 )
             try:
                 value = json.loads(data["choices"][0]["message"]["content"])
-                fields = ("correct", "stale", "unsupported", "uncertain")
-                if all(type(value.get(k)) is bool for k in fields):
-                    return {k: value[k] for k in fields}
+                if isinstance(value, dict):
+                    return value
             except (ValueError, TypeError):
                 pass
         elif response.status_code in (400, 401, 402, 403, 404, 429):
@@ -65,6 +55,16 @@ def mimo_judge(package, budget):
                 raise PermissionError(f"MiMo judge rejected HTTP {response.status_code}")
         time.sleep(attempt + 1)
     raise RuntimeError("MiMo verdict unavailable")
+
+
+def mimo_judge(package, budget):
+    messages = [{"role": "system", "content": JUDGE}, {"role": "user", "content": json.dumps(package, ensure_ascii=False)}]
+    fields = ("correct", "stale", "unsupported", "uncertain")
+    for _ in range(3):
+        value = mimo_json(messages, budget, 220)
+        if all(type(value.get(k)) is bool for k in fields):
+            return {k: value[k] for k in fields}
+    raise RuntimeError("MiMo returned an invalid verdict")
 
 
 def bounds(folder, book):
