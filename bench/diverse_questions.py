@@ -159,8 +159,10 @@ def freeze(folder, book):
             raise ValueError("Missing review for final fixture")
         digests[str(ch)] = digest
     path = folder / "fixtures.lock"
-    if path.exists() and json.loads(path.read_bytes()) != digests:
-        raise ValueError("Frozen questions changed")
+    if path.exists():
+        if json.loads(path.read_bytes()) != digests:
+            raise ValueError("Frozen questions changed")
+        return
     record(digests, path)
 
 
@@ -187,9 +189,15 @@ def restore(folder, book):
         target = folder / "fixtures" / f"{ch}.json"
         if target.exists() and fingerprint(target) != expected[ch]:
             raise ValueError("Existing private fixture differs from the registered bank")
-        record(case, target)
-        if fingerprint(target) != expected[ch]:
-            raise ValueError("Restored a different question")
+        if not target.exists():
+            raw = json.dumps(case, indent=2, ensure_ascii=False).encode()
+            if hashlib.sha256(raw).hexdigest() != expected[ch]:
+                raw = raw.replace(b"\n", b"\r\n")
+            if hashlib.sha256(raw).hexdigest() != expected[ch]:
+                raise ValueError("Restored a different question")
+            temp = target.with_suffix(".tmp")
+            temp.write_bytes(raw)
+            temp.replace(target)
     for name in ("selection.json", "audits.json", "fixtures.lock"):
         target = folder / name
         if target.exists() and target.read_bytes() != (public / name).read_bytes():

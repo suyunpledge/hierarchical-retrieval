@@ -1,0 +1,8 @@
+{
+  "stage": "All 1920 GPT answers frozen; before inspecting any accuracy results",
+  "primary": "kimi-k2.6",
+  "concurrency": 1,
+  "observed_requests_per_minute": 3,
+  "change": "Group blinded cases in independently numbered sets under the unchanged rubric; same format, model and cache namespace for all arms. Discard all 65 verdicts from the original sending schedule; no mixed-format scores. Allow at most 110 answers and 12 short sets per request. Retry groups with invalid sizes separately.",
+  "classification": "Operational deviation from the original per-edition batch transport; the frozen questions, system payloads, accuracy rule, comparison and thresholds were unchanged."
+}
