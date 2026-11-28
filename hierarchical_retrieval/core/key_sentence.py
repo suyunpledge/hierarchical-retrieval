@@ -81,6 +81,10 @@ class KeySentenceLibrary:
                     seen_sents.add(sent)
                     key_sentences.append(sent)
 
+        if not key_sentences:
+            logger.info("关键句库: 从 %s 未提取到关键句", source_entry_id)
+            return []
+
         sentence_ids = []
         timestamp = time.time()
 
@@ -111,8 +115,13 @@ class KeySentenceLibrary:
                 },
             ))
 
-        # 批量入索引（一次写入）
-        self._vector_store.add_many(items)
+        # 批量入索引（一次写入）；失败时清理已落盘的文本记录。
+        try:
+            self._vector_store.add_many(items)
+        except Exception:
+            for sid in sentence_ids:
+                self._text_store.delete(sid)
+            raise
 
         logger.info(
             "关键句库: 从 %s 提取 %d 条关键句",
@@ -139,10 +148,14 @@ class KeySentenceLibrary:
             嵌入服务不可用（查询向量为零向量）时返回空列表（M3 修复）。
         """
         q_vec = self.embedding.embed(query)
-        if not NomicEmbedding.is_valid(q_vec):
+        return self.search_by_vector(q_vec, top_k=top_k)
+
+    def search_by_vector(self, query_vector: np.ndarray, top_k: int = 5) -> list[dict]:
+        """使用已生成的查询向量检索，供分级流水线复用嵌入结果。"""
+        if not NomicEmbedding.is_valid(query_vector):
             logger.error("查询嵌入失败（Embedding 服务不可用），本次检索返回空")
             return []
-        results = self._vector_store.search(q_vec, top_k=top_k)
+        results = self._vector_store.search(query_vector, top_k=top_k)
 
         enriched = []
         for r in results:
@@ -176,3 +189,14 @@ class KeySentenceLibrary:
 
     def count(self) -> int:
         return self._text_store.count(prefix="ks_")
+
+    def flush(self) -> None:
+        self._vector_store.flush()
+
+    def delete_source(self, source_entry_id: str) -> int:
+        """Delete all key sentences belonging to one entry (rollback helper)."""
+        sentence_ids = self.list_sentences(source_entry_id)
+        self._vector_store.delete_many(sentence_ids)
+        for sentence_id in sentence_ids:
+            self._text_store.delete(sentence_id)
+        return len(sentence_ids)

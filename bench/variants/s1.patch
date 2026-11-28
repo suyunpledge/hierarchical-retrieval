@@ -1,0 +1,246 @@
+--- a/hierarchical_retrieval/core/branch_context.py
++++ b/hierarchical_retrieval/core/branch_context.py
+@@ -195,7 +195,7 @@
+ 
+ 
+ _ORIGINAL_LOOKUP = re.compile(r"(?:小说|原始|未改动的)(?:的)?(?:原始)?(?:正文|原文)|原文版本|更正前的原文")
+-_CURRENT_LOOKUP = re.compile(r"最后一次更正|现在生效|最新(?:的)?(?:工作稿|排演稿|更正|勘误|版本)|现行版本")
++_CURRENT_LOOKUP = re.compile(r"最后一次更正|现在生效|最新(?:的)?(?:更正|勘误|版本)|现行版本")
+ 
+ 
+ _AMENDMENT = re.compile(r"更正|勘误|改为|改成|替换为|撤销|作废|取消|撤回|以.{1,20}为准")
+@@ -227,36 +227,19 @@
+         ):
+             return None
+         match = _FIELD_REPLACEMENT.search(raw)
+-        if not match:
+-            return None
+-        name = match[1].strip().rstrip("。！？?")
+-        if name == field:
++        if match and match[1].strip().rstrip("。！？?") == field:
+             # Echo the entire replacement clause when its full source is already visible.
+             clause = raw[match.end() :] if raw in visible else raw
+             line = f"用户更正#{i + 1}（按项替换原值）：{clause}"
+             if len(line) + 1 <= limit:
+                 return [line], [i + 1]
+-        elif name not in field and not re.search(r"另外|此外|再说|顺便|还要|以及|还想", field):
+-            expanded, companion = _source_queries(messages, question, chapter, marker=version)
+-            linked = expanded.endswith(" " + name) or companion == name
+-            scene = None
+-            if not linked and _named_fields(messages, chapter) == {name}:
+-                scene = _field_scene(messages, chapter, field, name, independent=True)
+-            if linked or scene:
+-                # Preserve the field as well as the values on a paraphrase. The
+-                # reader can check the scope, even following a wrong assistant turn.
+-                line = f"用户更正#{i + 1}（仅适用于所列事项）：{raw[match.start() :]}"
++        elif match and _named_fields(messages, chapter) == {match[1]} and not re.search(r"另外|此外|再说|顺便|还要|以及|还想", field):
++            scene = _field_scene(messages, chapter, field, match[1], independent=True)
++            if scene:
++                source_id, clause = scene
++                line = f"场景原句#{source_id}（定位所问对象）：{clause}\n用户更正#{i + 1}（仅适用于所列事项）：{raw[match.start():]}"
+                 if len(line) + 1 <= limit:
+-                    if not scene and (companion or re.search(r"问|说|喊|回答|告诉", field + name)):
+-                        scene = _field_scene(messages, chapter, field, name)
+-                    if scene:
+-                        source_id, clause = scene
+-                        evidence = f"场景原句#{source_id}（定位所问对象）：{clause}\n{line}"
+-                        if len(evidence) + 1 <= limit:
+-                            return [evidence], sorted([source_id, i + 1])
+-                        if not linked:
+-                            return None
+-                    return [line], [i + 1]
++                    return [line], sorted([source_id, i + 1])
+         return None
+     return None
+ 
+@@ -272,9 +255,9 @@
+     return names
+ 
+ 
+-def _source_queries(messages, question, chapter, *, marker=None):
++def _source_queries(messages, question, chapter):
+     """Recover a previous field name for source ranking without importing its revised value."""
+-    marker = marker or _ORIGINAL_LOOKUP.search(question)
++    marker = _ORIGINAL_LOOKUP.search(question)
+     if chapter is None or not marker:
+         return question, None
+     focus = question[marker.end() :].lstrip("，,:：。 ")
+@@ -312,15 +295,10 @@
+     """Score literal sentences within one verified chapter, independently of index sampling."""
+     # Chapter and edition have already selected the source. Keep all other
+     # constraints, including ones the speaker put before the edition marker.
+-    focus = _ORIGINAL_LOOKUP.sub(" ", TextProcessor._CHAPTER.sub(" ", query))
+-    # query_terms omits isolated Han characters. A verb before 了 or after
+-    # 被 can be the only distinction between two actions by the same person.
+-    verbs = set(re.findall(r"[一-鿿](?=了(?:谁|什么|哪|几|对方|自己))|(?<=被)[一-鿿](?=的|到)", focus))
+-
+-    terms = TextProcessor.query_terms(re.sub(r"对方|哪个部位|什么部位|哪个位置|哪一侧", " ", focus))
++    terms = TextProcessor.query_terms(_ORIGINAL_LOOKUP.sub(" ", TextProcessor._CHAPTER.sub(" ", query)))
+     # Characters contribute weakly when an action is reworded. Exact terms and rare
+     # details carry more weight than a character's name repeated throughout a chapter.
+-    chars = {c for t in terms for c in t if "\u4e00" <= c <= "\u9fff"} | verbs
++    chars = {c for t in terms for c in t if "\u4e00" <= c <= "\u9fff"}
+     spans, frequencies = [], Counter()
+     for m in _SOURCE_SENTENCE.finditer(raw):
+         sentence = m[0].lower()
+@@ -328,7 +306,7 @@
+         spans.append((m.start(), m.end(), matches))
+         frequencies.update(matches)
+     weights = {
+-        t: log1p((len(spans) - count + 0.5) / (count + 0.5)) * (0.18 if t in chars and t not in verbs else 1)
++        t: log1p((len(spans) - count + 0.5) / (count + 0.5)) * (0.18 if t in chars else 1)
+         for t, count in frequencies.items()
+     }
+     return [
+@@ -358,53 +336,14 @@
+ 
+ def _field_scene(messages, chapter, focus, field, *, independent=False):
+     """Find a literal scene cue shared by a paraphrase and a named amendment."""
+-    query_chars = set("".join(TextProcessor.query_terms(focus)))
+-    field_chars = set("".join(TextProcessor.query_terms(field)))
+-    # The opening document and recent pastes cover the common paths without
+-    # reranking an unbounded archive on each paraphrase.
+-    recent = range(len(messages) - 1, max(0, len(messages) - 65), -1)
+-    for idx in (*recent, 0):
+-        entry = messages[idx]
+-        raw = entry["content"]
+-        if entry["role"] != "user" or len(raw) < 500:
+-            continue
+-        for cid, begin, end in TextProcessor.chapter_spans(raw):
+-            if cid != chapter:
+-                continue
+-            excerpt = raw[begin:end]
+-            if independent:
+-                bounds = _agreeing_paragraph(excerpt, focus, field, _source_sentence_scores(excerpt, focus))
+-                if bounds:
+-                    return idx + 1, excerpt[bounds[0] : bounds[1]].strip()
+-                continue
+-            scores = _source_sentence_scores(excerpt, focus + " " + field)
+-            if not scores:
+-                continue
+-            _, a, b = max(scores, key=lambda item: item[0])
+-            left = excerpt.rfind("\n", 0, a) + 1
+-            endline = excerpt.find("\n", b)
+-            paragraph = excerpt[left : endline if endline >= 0 else len(excerpt)].strip()
+-            # Dialogue can identify one action by two consecutive remarks. A
+-            # clause before the first remark does not establish that identity.
+-            if (
+-                len(paragraph) <= 220
+-                and re.search(r"问|说|喊|回答|告诉", focus + field)
+-                and re.search(r"[“「]", paragraph)
+-            ):
+-                if (
+-                    len(query_chars.intersection(paragraph)) >= 2
+-                    and len(field_chars.intersection(paragraph)) >= 2
+-                ):
+-                    return idx + 1, paragraph
+-            # Prefer the action that introduces the value. Copy it literally
+-            # and keep quoted original values out of the working-copy answer.
+-            for clause in re.split(r"[，,。！？；：]", excerpt[a:b]):
+-                if 6 <= len(clause) <= 96 and not re.search(r"[「」“”]", clause):
+-                    if (
+-                        len(query_chars.intersection(clause)) >= 2
+-                        and len(field_chars.intersection(clause)) >= 2
+-                    ):
+-                        return idx + 1, clause
++    for idx in (*range(len(messages)-1, max(0,len(messages)-65),-1), 0):
++        m=messages[idx]; raw=m["content"]
++        if m["role"] != "user" or len(raw)<500: continue
++        for cid,start,end in TextProcessor.chapter_spans(raw):
++            if cid==chapter:
++                excerpt=raw[start:end]
++                bounds=_agreeing_paragraph(excerpt,focus,field,_source_sentence_scores(excerpt,focus))
++                if bounds: return idx+1,excerpt[bounds[0]:bounds[1]].strip()
+     return None
+ 
+ 
+@@ -530,7 +469,7 @@
+         text = m["content"]
+         lower = text.lower()
+         hits = sum(t in lower for t in terms)
+-        if not (hits or i in found) or not text:
++        if not (hits or i in found) or not text or text in visible:
+             continue
+         correction = m["role"] == "user" and bool(_DECISION.search(text))
+         priority = 0
+@@ -548,8 +487,6 @@
+                 version == "current" and correction and re.search(r"改为|改成|以.{1,35}为准|更正[：:]", text)
+             ):
+                 priority = 2
+-        if text in visible and not (priority == 2 and version == "original"):
+-            continue
+         candidates.append((priority, i in found, hits, correction, m["role"] == "user", i))
+     source_query, companion = (
+         _source_queries(messages, question, target_chapter) if version == "original" else (question, None)
+@@ -564,7 +501,7 @@
+     has_original = False
+     for priority, _, _, _, _, i in sorted(candidates, reverse=True):
+         m = messages[i]
+-        if has_original and priority != 2:
++        if has_original and priority != 2 and (m["role"] == "assistant" or _AMENDMENT.search(m["content"])):
+             continue
+         label = f"原文#{i + 1} {_ROLES[m['role']]}："
+         available = min(420, limit - len(label) - 1)
+@@ -594,9 +531,9 @@
+             quote = _source_excerpt(raw, source_query, available, field=independent_field)
+             if companion:
+                 other = _source_excerpt(raw, source_query + " " + companion, available)
+-                if quote in other:
++                if quote in other or quote in visible:
+                     quote = other
+-                elif other not in quote and len(quote) + len(other) + 1 <= available:
++                elif other not in quote and other not in visible and len(quote) + len(other) + 1 <= available:
+                     quote += "\n" + other
+             has_original = bool(quote)
+         else:
+@@ -609,7 +546,7 @@
+             boundary = max((body.rfind(stop, begin + len(quote), end) for stop in "。！？\n"), default=-1)
+             if boundary >= begin + len(quote):
+                 quote = body[begin : boundary + 1].strip()
+-        if not quote or (quote in visible and not is_original):
++        if quote in visible:
+             continue
+         line = label + quote
+         lines.append((i, line))
+@@ -762,41 +699,6 @@
+     )
+     notes.extend(quotes)
+     wire_user = "\n".join(notes) + suffix + question if notes else question
+-    # A previous model answer is not a source for an explicit edition lookup.
+-    # When it competes with a named replacement or a repeated scene, read that
+-    # source independently; keep ordinary conversational follow-ups on the branch.
+-    if start and len(quotes) == 1 and not (evidence or position or source):
+-        line = quotes[0]
+-        scoped = (
+-            version == "current"
+-            and line.startswith(("用户更正#", "场景原句#"))
+-            and "仅适用于所列事项" in line
+-        )
+-        if version == "original" and ids:
+-            raw = messages[ids[0] - 1]["content"]
+-            literal = line.partition("：")[2].splitlines()[0]
+-            scoped = (
+-                len(literal) >= 12
+-                and literal in visible
+-                and literal in raw
+-                and len(raw) >= 500
+-                and messages[ids[0] - 1]["role"] == "user"
+-                and chapter in (c for c, _, _ in TextProcessor.chapter_spans(raw))
+-                and len(TextProcessor.query_terms(question[_ORIGINAL_LOOKUP.search(question).end() :])) >= 4
+-            )
+-        if scoped:
+-            rule = (
+-                "原句只用来辨认是哪件事。仅输出该事项在最新工作稿中的各项新值。若证据指向不同事项，说明依据不足。"
+-                if version == "current"
+-                else "只答所问的原文场景。按原句区分做了什么和是否做到，未交代的细节答未说明。"
+-            )
+-            isolated = question + "\n\n" + rule + "\n" + line
+-            if len(isolated) <= room:
+-                keep = opening_offset
+-                if version == "original" and any(literal in m["content"] for m in opening):
+-                    if sum(len(m["content"]) for m in opening) + len(isolated) <= room:
+-                        keep += len(opening)
+-                head, tail, wire_user = head[:keep], [], isolated
+     current = {"role": "user", "content": wire_user}
+     prompt = head + tail + ([current] if messages else _render_opening(current, opening_block))
+     original = messages[0] if messages else current

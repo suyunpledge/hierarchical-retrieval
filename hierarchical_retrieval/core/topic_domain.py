@@ -100,8 +100,18 @@ class TopicDomainManager:
         if path.exists():
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
+                dim = self.config.embedding_dim
                 for d in data:
                     domain = TopicDomain.from_dict(d)
+                    # 更换嵌入模型（如 nomic 768 → bge-m3 1024）后旧质心维度
+                    # 不符，np.dot 会在每次 ingest/检索时抛 ValueError。
+                    # 质心置空：该域不再参与匹配，但记录与计数保留可追溯。
+                    if domain.embedding is not None and domain.embedding.shape != (dim,):
+                        logger.warning(
+                            "话题 [%s] 质心维度 %s 与当前模型维度 %d 不符，已停用匹配",
+                            domain.domain_id, domain.embedding.shape, dim,
+                        )
+                        domain.embedding = None
                     self._domains[domain.domain_id] = domain
                 logger.info("加载 %d 个话题界域", len(self._domains))
             except Exception as e:
@@ -122,14 +132,15 @@ class TopicDomainManager:
     # ── 界域级向量存储 ────────────────────────────────────
 
     def _get_vector_store(self, domain_id: str) -> VectorStore:
-        if domain_id not in self._vector_stores:
-            base_dir = self.config.storage_root
-            vs = VectorStore(
-                root_dir=f"{base_dir}/{self.config.vector_index_dir}/domains/{domain_id}",
-                dimension=self.config.embedding_dim,
-            )
-            self._vector_stores[domain_id] = vs
-        return self._vector_stores[domain_id]
+        with self._lock:
+            if domain_id not in self._vector_stores:
+                base_dir = self.config.storage_root
+                vs = VectorStore(
+                    root_dir=f"{base_dir}/{self.config.vector_index_dir}/domains/{domain_id}",
+                    dimension=self.config.embedding_dim,
+                )
+                self._vector_stores[domain_id] = vs
+            return self._vector_stores[domain_id]
 
     # ── 界域分配 ──────────────────────────────────────────
 
@@ -223,22 +234,32 @@ class TopicDomainManager:
         Returns:
             匹配的 TopicDomain，若无匹配则返回 None
         """
-        if not self._domains:
-            return None
+        with self._lock:
+            if not self._domains:
+                return None
 
         q_vec = self.embedding.embed(query)
+        return self.detect_domain_by_vector(q_vec)
+
+    def detect_domain_by_vector(self, query_vector: np.ndarray) -> Optional[TopicDomain]:
+        """使用已生成的查询向量检测话题，供分级流水线复用嵌入结果。"""
+        if not NomicEmbedding.is_valid(query_vector):
+            logger.error("查询嵌入失败（Embedding 服务不可用），本次检索返回空")
+            return None
         best_domain = None
         best_score = -1.0
 
-        for domain in self._domains.values():
+        with self._lock:
+            domains = list(self._domains.values())
+        for domain in domains:
             if domain.embedding is not None:
-                sim = float(np.dot(q_vec, domain.embedding))
+                sim = float(np.dot(query_vector, domain.embedding))
                 if sim > best_score:
                     best_score = sim
                     best_domain = domain
 
         if best_domain and best_score >= self.config.topic_similarity_threshold:
-            logger.info(
+            logger.debug(
                 "话题检测: [%s] %s (相似度 %.4f)",
                 best_domain.domain_id, best_domain.name, best_score,
             )
@@ -251,17 +272,18 @@ class TopicDomainManager:
     def search_in_domain(
         self, query: str, domain: TopicDomain, top_k: int = 5
     ) -> list[dict]:
-        """
-        在指定话题界域内检索关键句。
-
-        嵌入服务不可用（查询向量为零向量）时返回空列表（M3 修复）。
-        """
-        vs = self._get_vector_store(domain.domain_id)
+        """在指定话题界域内检索关键句。"""
         q_vec = self.embedding.embed(query)
-        if not NomicEmbedding.is_valid(q_vec):
+        return self.search_in_domain_by_vector(q_vec, domain, top_k=top_k)
+
+    def search_in_domain_by_vector(
+        self, query_vector: np.ndarray, domain: TopicDomain, top_k: int = 5
+    ) -> list[dict]:
+        """使用已生成的查询向量在指定话题界域内检索。"""
+        if not NomicEmbedding.is_valid(query_vector):
             logger.error("查询嵌入失败（Embedding 服务不可用），本次检索返回空")
             return []
-        return vs.search(q_vec, top_k=top_k)
+        return self._get_vector_store(domain.domain_id).search(query_vector, top_k=top_k)
 
     def add_key_sentence_to_domain(
         self, domain_id: str, sentence_id: str, text: str, metadata: Optional[dict] = None
@@ -304,6 +326,25 @@ class TopicDomainManager:
             for r in records
         ])
 
+    def remove_key_sentences(self, domain_id: str, sentence_ids: list[str]) -> None:
+        """Remove domain index entries when an ingest transaction rolls back."""
+        if not sentence_ids:
+            return
+        self._get_vector_store(domain_id).delete_many(sentence_ids)
+
+    def rollback_assignment(self, domain_id: str, was_new: bool) -> None:
+        """Undo the entry-count/domain mutation made by assign_domain."""
+        with self._lock:
+            domain = self._domains.get(domain_id)
+            if domain is None:
+                return
+            if was_new and domain.entry_count <= 1:
+                self._domains.pop(domain_id, None)
+                self._vector_stores.pop(domain_id, None)
+            else:
+                domain.entry_count = max(0, domain.entry_count - 1)
+            self._save_registry()
+
     # ── 辅助 ──────────────────────────────────────────────
 
     @staticmethod
@@ -316,10 +357,19 @@ class TopicDomainManager:
         return f"{clean}..."
 
     def list_domains(self) -> list[TopicDomain]:
-        return list(self._domains.values())
+        with self._lock:
+            return list(self._domains.values())
 
     def get_domain(self, domain_id: str) -> Optional[TopicDomain]:
-        return self._domains.get(domain_id)
+        with self._lock:
+            return self._domains.get(domain_id)
 
     def count(self) -> int:
-        return len(self._domains)
+        with self._lock:
+            return len(self._domains)
+
+    def flush(self) -> None:
+        with self._lock:
+            stores = list(self._vector_stores.values())
+        for store in stores:
+            store.flush()

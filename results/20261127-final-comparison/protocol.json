@@ -1,0 +1,32 @@
+{
+  "bank_commit": "b355df7",
+  "sha256": {
+    "selection.json": "08ebe51f400c6147cd89ccfd00e9e318dc4f1992dd9d40ecf86857da186e136b",
+    "audits.json": "e7260235f94639551e75b8898681c6fe3702c4f28b92568ba269471b4a74e9b9",
+    "fixtures.lock": "e4a83bf6f115b3266781c3002669e6c9b6add4b745bf69869f380ef85a3c7798"
+  },
+  "model": "gpt-6.2-sol",
+  "author": "mimo-v2.6-flash",
+  "primary": "kimi-k2.6",
+  "backup": "Ling-3.0-flash",
+  "quota": "Primary balance checked against 7.2 CNY, both scorers passed a two-answer calibration. All arms regraded with backup if primary is abandoned.",
+  "budget": {
+    "estimated_gpt_usd": 5.1,
+    "gpt_cap_usd": 6.7,
+    "judge_estimate_cny": 4.5,
+    "judge_cap_cny": 7.2,
+    "stage_ceiling_usd": 8
+  },
+  "rubric_sha256": "cdf5130a7d3725ccc7f5a77c3e93f509f8afe39d29fb67ba64cc5ecf749da6f1",
+  "sample": "40 frozen chapters, 20 pairs, 4 arms, 24 turns each, interim metric from first 12; nested horizons, no stopping-length hint",
+  "replay": "Identical outbound BT messages and options for each repeat, with independent topic/session cache key; primary answers stay in the replayed history.",
+  "input_scope": "Only a named chapter is specified as a topic. Unnamed followups use the current branch with no injected topic. Direct arm sends current chapter plus edits and question.",
+  "metrics": "Conservative chapter-mean completeness requires both ordered source match and independent semantic correctness. Also report semantic-only and grader disagreement. CI: 10000 chapter resamples, fixed seed 20261127.",
+  "decision": "At both lengths original and latest chapter means >= direct minus 3 percentage points; input per ask <= 2x retrieval. Report both prefix runs. Compare each difference with absolute same-input repeat variation. Default is decided by user.",
+  "forms": {
+    "点章点版": 40,
+    "无章号承接": 40,
+    "更正后直接问": 40,
+    "点章承接": 40
+  }
+}

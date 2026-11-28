@@ -1,4 +1,4 @@
-﻿"""
+"""
 全局配置模块
 """
 
@@ -29,6 +29,12 @@ class HConfig:
     top_k_full_context: int = 3        # 每个关键句关联的全文段落数
     topic_similarity_threshold: float = 0.55  # 话题匹配阈值（bge-m3 分布）
     key_sentence_similarity_threshold: float = 0.55  # 关键句匹配阈值（bge-m3 分布）
+    # 全文段落直检（第二条召回路径）：关键句只覆盖约一半句子，未被选为
+    # 关键句的事实只能靠直接检索全文段落找回。混合分 = 余弦 + 权重×关键词重合度。
+    direct_chunk_search: bool = True
+    chunk_similarity_threshold: float = 0.55   # 混合分阈值（bge-m3 实测标定）
+    chunk_lexical_weight: float = 0.15         # 关键词重合度权重
+    chunk_candidates: int = 20                 # 向量粗召回候选数
 
     # ── 关键句提取 ──────────────────────────────────────────────
     max_key_sentences_per_chunk: int = 3
@@ -51,8 +57,51 @@ class HConfig:
     embed_workers: int = 6               # 批量嵌入的并发线程数（Ollama 可并发）
     max_ingest_per_request: int = 32     # 代理单次请求最多补录的旧消息条数
 
+    # ── 进程内缓存（0 = 关闭） ─────────────────────────────
+    embedding_cache_size: int = 4096     # 嵌入向量 LRU 条数（1024 维约 4KB/条）
+    retrieval_cache_size: int = 256      # 检索结果 LRU 条数（追加时校验受影响的结果）
+    fulltext_cache_size: int = 128       # 全文记录 LRU 条数（写入/删除时同步更新）
+
     # ── 日志 ────────────────────────────────────────────────────
     log_level: str = "INFO"
+
+    def __post_init__(self) -> None:
+        """Fail fast on values later consumed by FAISS or thread pools."""
+        positive_ints = {
+            "embedding_dim": self.embedding_dim,
+            "topic_max_domains": self.topic_max_domains,
+            "context_char_budget": self.context_char_budget,
+            "recent_turns_keep": self.recent_turns_keep,
+            "compress_threshold_chars": self.compress_threshold_chars,
+            "embed_workers": self.embed_workers,
+        }
+        for name, value in positive_ints.items():
+            if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+                raise ValueError(f"{name} must be a positive integer")
+        non_negative_ints = {
+            "top_k_key_sentences": self.top_k_key_sentences,
+            "top_k_full_context": self.top_k_full_context,
+            "max_key_sentences_per_chunk": self.max_key_sentences_per_chunk,
+            "key_sentence_max_length": self.key_sentence_max_length,
+            "max_ingest_per_request": self.max_ingest_per_request,
+            "chunk_candidates": self.chunk_candidates,
+            "embedding_cache_size": self.embedding_cache_size,
+            "retrieval_cache_size": self.retrieval_cache_size,
+            "fulltext_cache_size": self.fulltext_cache_size,
+        }
+        for name, value in non_negative_ints.items():
+            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                raise ValueError(f"{name} must be a non-negative integer")
+        for name in (
+            "topic_similarity_threshold",
+            "key_sentence_similarity_threshold",
+            "topic_min_similarity",
+            "chunk_similarity_threshold",
+            "chunk_lexical_weight",
+        ):
+            value = getattr(self, name)
+            if not isinstance(value, (int, float)) or not 0.0 <= float(value) <= 1.0:
+                raise ValueError(f"{name} must be between 0 and 1")
 
     @classmethod
     def from_dict(cls, d: dict) -> "HConfig":

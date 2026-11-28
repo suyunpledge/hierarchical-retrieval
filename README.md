@@ -8,12 +8,21 @@
 
 ---
 
+## 章末断点后的版本追问
+
+话题工作区默认在本轮明确点名单章、原文唯一且能放进字符预算时，把整章放在缓存断点前。断点之后按时间保留该话题的全部更正原话和最近两组普通问答，最后放本问。预算紧时先移除较早的普通问答。未点章、跨章、来源有歧义或整章与必要内容超预算时，继续走现有检索。此默认策略适用于支持显式断点的 GPT-6.2 话题代理。指定阅读位置或请求指定来源时，沿用相应的检索路径。
+
+设置 `HR_WHOLE_CHAPTER_HISTORY=0` 可恢复全程检索。`HR_CHAPTER_QA_WINDOW` 默认是 `2`，也支持 `0`、`1` 和 `all`。明确要求回顾早先问答时，可在预算内查看更早历史。按需补回选版线索仍需显式设置 `HR_CHAPTER_EDITION_ANCHOR=1`。
+
+在 R3 的 40 个留出章节上，这套默认策略在 12 / 24 问的原文答全率为 88.3% / 88.9%，单问输入费为同期检索的 1.337 / 1.318 倍。每组 480 问中，360 问点章使用整章前缀，120 问未点章使用检索。[R3 对照、缓存回执与适用范围](results/20261127-final-comparison/report.md) [按需补回旧问答的独立实验](results/20261127-version-anchor/report.md)
+
 ## 目录
 
 - [30 秒理解](#30-秒理解)
 - [背景与动机](#背景与动机)
 - [架构总览](#架构总览)
 - [安装与部署（llama.cpp 路线）](#安装与部署llamacpp-路线)
+- [运行回归测试](#运行回归测试)
 - [Ollama 路线（可选）](#ollama-路线可选)
 - [配置参数](#配置参数)
 - [API 参考](#api-参考)
@@ -220,6 +229,21 @@ schtasks /Create /TN "HREmbed-AutoStart" /SC ONLOGON /RL LIMITED `
 > 计划任务跑控制台程序必须套 `conhost.exe --headless`，否则 Win11 默认终端会闪窗。
 
 ---
+
+## 运行回归测试
+
+从仓库根目录创建独立的 Python 环境。以下命令已在 Windows x64、Python 3.12 上验证。
+
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e ".[api,dev]"
+.\.venv\Scripts\python.exe -m pip check
+.\.venv\Scripts\python.exe -m pytest -q
+```
+
+Linux 或 macOS 可用 `python3 -m venv .venv` 创建环境，后续命令把解释器路径换成 `.venv/bin/python`。
+
+基础依赖 `faiss-cpu` 提供 Python 模块 `faiss`，向量索引测试需要它。`api` 安装 FastAPI 等服务端依赖，`dev` 安装 pytest 和 TestClient 所用的 HTTPX。遇到 `ModuleNotFoundError: No module named 'faiss'` 时，用同一虚拟环境的解释器执行 `python -m pip install faiss-cpu`，再用 `python -c "import faiss; print(faiss.__version__)"` 核对。默认测试目录为 `tests/`，回归可在本地运行，无需模型 API 密钥。
 
 ## Ollama 路线（可选）
 

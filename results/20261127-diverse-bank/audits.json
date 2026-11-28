@@ -1,0 +1,202 @@
+{
+  "119": {
+    "accepted_sha256": "db54438bd75bf87c0318110272a8bb34552a0fbff8160321e3472712711e6fbe",
+    "draft_sha256": "cd6a60cc17140da4fe2000d3e27df18043804d4ec1dac9618b10856efce71f3d",
+    "review": "原问把人物的疑问当作已有答案。改核能够确认的对话双方。"
+  },
+  "187": {
+    "accepted_sha256": "3b397bafc9b05d46300be5e8ec97f6a1567f36408a9aeda896ab89d4cc8cabc4",
+    "draft_sha256": "c5112f21bfa28f9f96efb0d2b1146f8a72ed9ca553669060411651f131afa26f",
+    "review": "补齐实验目的，区分三版目的。"
+  },
+  "225": {
+    "accepted_sha256": "b3f32eff730482981e6182f2b01f1b0fc95693566460e4ae8b3849855a491b10",
+    "draft_sha256": "a79f923667f36d83cbd7c734abb5383670241544b2936fbb001da66d83420aee",
+    "review": "区分意图与行动、观察者与被观察者。"
+  },
+  "242": {
+    "accepted_sha256": "6f3c2d62a88f07118308d21cb963ea5d4a72bb1f27cbb773074f0caea65e5593",
+    "draft_sha256": "97879ba61203601d67e92aa70a8db4458c21948d4e860eed4672223271057f08",
+    "review": "统一肯否与帮助者的字段和顺序。"
+  },
+  "314": {
+    "accepted_sha256": "2482952836962aef961b81713d737fb989cb6023ef316239cac8216aca421627",
+    "draft_sha256": "5d2d976f9b64978468e161c5415f397f0ceb174aac9e0d120663aabb25b97894",
+    "review": "第二问明确问等待对象，保留假设语气。"
+  },
+  "455": {
+    "accepted_sha256": "f0397af5a5c6175c5837f29f7c6baa25c447ed068a4792ac699e3c6919cffa93",
+    "draft_sha256": "f583cff0414ec7ab8cd50cd6f8aab503549684978ae488e4026167cde4f06003",
+    "review": "确认题目考察观察到的两项事实。"
+  },
+  "630": {
+    "accepted_sha256": "fbc0fecac739a4ed45c255fa02d52aa55ad96f696d3599225de029ef2d158ee6",
+    "draft_sha256": "3988a45a2b35ba00c67dc1ad3c2e6601af37c25c9da056aa4dd0d0115841e6a0",
+    "review": "补齐两项并去除题干内答案。"
+  },
+  "642": {
+    "accepted_sha256": "d4776039cff523eb6201646d66b7dd91ec9597ec5d65546c172a015e7ff48e7a",
+    "draft_sha256": "3aa2056cf2614003d3078c681b74c800101fabd782e0b83a48c08f2e5d0abce8",
+    "review": "原参考重复第一张牌，改为数量与末张月份。"
+  },
+  "652": {
+    "accepted_sha256": "4ced9e44a04f6062aa0e309ce50ca18075dfd4639e2955101a61eca59b16b137",
+    "draft_sha256": "004e05f4e49fb001edd8816f90143b5dfe06ffb1bc96278219b261dd1407409a",
+    "review": "将重复的动作和值拆为原句的两步。"
+  },
+  "829": {
+    "accepted_sha256": "0cbff25d5033f5961061c7ff77492a174558976cfbc40bbc31be345f346c73cc",
+    "draft_sha256": "a4a52391acdd46fbc523ce4c62e24c35fdcc7e37cc15b9cee005378088f2a722",
+    "review": "保留明确肯否，第三版与原文语义分开。"
+  },
+  "836": {
+    "accepted_sha256": "40b8e5e55cb6ec6882e775851e39a54e18fbfeada8567cc20f674d8ee09b5f3b",
+    "draft_sha256": "b6fc227eb59ec54f0686d2b7a3d203858341fa5b9169288bb47878566b6d7b00",
+    "review": "两种问法明确问结局，删掉题干泄露的结局。"
+  },
+  "1": {
+    "accepted_sha256": "2f2a8623d3cd41acace0ac65769e0948aff9842eb4c00f4fcf9395bc4ea17c7a",
+    "draft_sha256": "43c0a6d0e5746dcad4819b8ea4f77901e7632e4e3b4d5b6c6b10177029f124c9",
+    "review": "两种问法都询问时长与反应，更正均可回答。"
+  },
+  "94": {
+    "accepted_sha256": "6926525c9d62af3136dd1523a6d2f1113df082acf876e680f473e03d0aef8783",
+    "draft_sha256": "213c4b5ba522caa6f75c4e124ae24e3b4dc38184948639a9501b8b1be80d0bb8",
+    "review": "第二项询问未来计划而非已经实施的行动。"
+  },
+  "153": {
+    "accepted_sha256": "56057a6a300f77c682abed7462a95f9780fe0153b0b6b2107826bc0bdafa5025",
+    "draft_sha256": "3a5169df467215279aa35e30201cdeacacc5763a3c969a5309d95cf9504135b7",
+    "review": "去掉题干里的姓名，锁定第二问的明确对象。"
+  },
+  "173": {
+    "accepted_sha256": "fe616cc91ea841788cb611b798d8583e35c1abcd64443a2c3d1f90d53a8bf137",
+    "draft_sha256": "346d28241c22a51a0256c663745d0033d9e64ba210648c80d836c96e1eb920b9",
+    "review": "还原旁观者的不确定性，区分动作与接收者。"
+  },
+  "226": {
+    "accepted_sha256": "86be5f1bdb7335c9b1e853a8d786cc680779d85d0c4b3cff76bb0f9bdbe9811a",
+    "draft_sha256": "6e4ab6e718ead2809b03983fd7f0af7942c2c80690f2f3042788580aad7a9b51",
+    "review": "去掉与原文语义等价的工作稿版本。"
+  },
+  "336": {
+    "accepted_sha256": "53612bf30144500e218f6b111e714fa7f3e1ee6a47e4120681de9a825f1a9069",
+    "draft_sha256": "d04a30bd09fefcf82d1190f162a90328eef158df7588a18576c9fb4f86d776ab",
+    "review": "移除语义相同的三版动作。"
+  },
+  "383": {
+    "accepted_sha256": "87c793dcf5829f54787c60c1b55d088f18a514783586c63f551352f098cb2597",
+    "draft_sha256": "7622af22e2b1d3d11de53fc7da0e03471489343c742d4ce74ddac1c69e9b568c",
+    "review": "区分说话人的主张与已证实事实，改为两个独立字段。"
+  },
+  "385": {
+    "accepted_sha256": "ef0d853e4eccc7db537ec1310387ecb01aac68f5a48b4331c9f3aba6eb60e470",
+    "draft_sha256": "64c323fdf2b94069118d727dd960a5ef2a4e7fe342e03bb7a07699fff4ec7dd1",
+    "review": "去除题面已给出的冲洗对象。"
+  },
+  "427": {
+    "accepted_sha256": "61bbff34cc96bdf567ac185b218c972197dc4d5ebbd6bbf526793f2104dbfd14",
+    "draft_sha256": "9021d5e0c7c272467eba4516aa76d1c9f91408b5ce5b70f8140b0e457c7b12b4",
+    "review": "移除无法从单句判明身份的指代。"
+  },
+  "440": {
+    "accepted_sha256": "98a4e0c07fdd1ed5fe546327982ee4cd00cd971917ac1d08b39b77fddd272948",
+    "draft_sha256": "b008ad6c3697dfd4d1eafa2efeca3596617b955432ce9be9fc3fbcf0c0cbf55f",
+    "review": "更换证据。原稿以人物疑问为肯否证据，选用明确陈述。"
+  },
+  "445": {
+    "accepted_sha256": "453d0a844f46e9558f2e44c7296a529c613281e49a6c6b72374fe8cfd179cfc5",
+    "draft_sha256": "26ff0ff95e1de04274900a89147166b4307dfd24bc20faeedf965646bff45fa1",
+    "review": "去除重复指代，补上委托理由。"
+  },
+  "513": {
+    "accepted_sha256": "106a6e68e392c22e0a08e018068eeb22d6aaf0c4505b6c5c6f36be89a588b876",
+    "draft_sha256": "15461ca0f31bdb04b22653c3c95d4c0a67ac7f1d2cc4613eb08010fa4002aed0",
+    "review": "区分开场白与声称的事实，版本可区分。"
+  },
+  "585": {
+    "accepted_sha256": "2286dc08c42a585c19f9a1ef93394ecfaafdcd05ec27b0ecc8d2e6495ebd4281",
+    "draft_sha256": "f918c0983dd48394ca128dcd2798777b866092f2842fbb2c64f8571d6d0f1863",
+    "review": "用接活者和动作取代重复参考项。"
+  },
+  "592": {
+    "accepted_sha256": "c81c4aac727aa0f0a8e82fcfc56c17f7c76f278f8c1dbffbf419581d2397cc16",
+    "draft_sha256": "60c218993608c56486f46d0a70731b04d379c7a7f86f46fe59119adaf870dde6",
+    "review": "修复版本重复及题干泄露表情。"
+  },
+  "657": {
+    "accepted_sha256": "c8f42b430c078d879e166307be48f61caf7d2d2dd92a5de19cb209b0f3e18f25",
+    "draft_sha256": "1268f5b79a181cff4f929f7942619c0ab2f54e0ef05987048f9e12a75cbecb63",
+    "review": "把重复参考项改为观察对象与判断。"
+  },
+  "741": {
+    "accepted_sha256": "9b28b1f07d0b6447f78ae2fabfa6179801e4027fb40848bf365fe1921aa777cb",
+    "draft_sha256": "b4874e03149e7de110bc1bb57bcf631b299b4f4e17bdb887b6fd1278adaa0a81",
+    "review": "去掉改述里的选项提示。"
+  },
+  "853": {
+    "accepted_sha256": "ccd97efad625309b1dc1b1235fdee29f3831072dd843d2bfdcfb71d2c31bac53",
+    "draft_sha256": "974713cbc00d527057c17aaa917fc52058d6dea1d03f6df4f9a622476e8d15d4",
+    "review": "去除题面泄露的结局。"
+  },
+  "715": {
+    "accepted_sha256": "c256e57916001036f98fd7e0d0b6c38c4e3ea9b4fca6633b67fa7b542e5a6778",
+    "draft_sha256": "39a6e115e3f461407ddc148fd27048575a6ee1cf56e3b25b1cef74dea781b5a1",
+    "review": "替代第387章的词义误命中；新章两问显式问钱币和动作。"
+  },
+  "342": {
+    "accepted_sha256": "46781dae4bf68a6e262cc39f86d518614afa448c230a146eb757a36f4c669fb3",
+    "draft_sha256": "a0b9660c66944744343cc34184c50bdd442d13d460213cc7072302f93e2f6eaa",
+    "review": "核对原句、两问字段顺序、原值及三版更正，接受。"
+  },
+  "138": {
+    "accepted_sha256": "3850e0d01c51fa92e275086ab54380f42e21ff3f22a36ceea5a4356bd83325b4",
+    "draft_sha256": "e0221dd3711dccf64c12165185e3e7b8b280f5fe0a1d00d4382ebf23cbbe13d2",
+    "review": "核对原句、两问字段顺序、原值及三版更正，接受。"
+  },
+  "458": {
+    "accepted_sha256": "42229195756c5033e73652e71e6cf1a810ec3457eabafbc69e57aa1dcde4ccfc",
+    "draft_sha256": "8013d696cb30724e7058335c83e3a73d5b0113df8b2efc62693039a228a20139",
+    "review": "核对原句、两问字段顺序、原值及三版更正，接受。"
+  },
+  "874": {
+    "accepted_sha256": "57c16820c48665c37cf8c72b563f5ade4bab85b02b3e75814a20ad8718471f78",
+    "draft_sha256": "6e841dd692fd9fd0ccb3f8e63abd49f221cd331eba619dc324bab76f1a6c0b89",
+    "review": "核对原句、两问字段顺序、原值及三版更正，接受。"
+  },
+  "293": {
+    "accepted_sha256": "1c35c9eb79968dac53ab46e682273fbf29c799de7adbff676fb2608711f69056",
+    "draft_sha256": "8c00c2fabb2b06b319e24c9e49db7b37d1c6a1fa915dac5173b392b97dc4bb2e",
+    "review": "核对原句、两问字段顺序、原值及三版更正，接受。"
+  },
+  "839": {
+    "accepted_sha256": "1c37caff32933b52c9fbaa1a0efef70532c72b22ec1c375ce6fac57dabbfe27a",
+    "draft_sha256": "4eff5d6f314fcca89031215f0a9cabefd3018c3aad55c3d80efe77b3baf8d31e",
+    "review": "核对原句、两问字段顺序、原值及三版更正，接受。"
+  },
+  "666": {
+    "accepted_sha256": "64659a1f29c1abf86e157a1e97a0a342ccdbdc90590087d501819b8d2349d98e",
+    "draft_sha256": "51bc1c46fc788a0f10a8c7beb0ba1a42cf487fc97b95422ea61642ae5866cc16",
+    "review": "核对原句、两问字段顺序、原值及三版更正，接受。"
+  },
+  "328": {
+    "accepted_sha256": "7abda1ddda2c2be7716960dc5e75bd5b0829ebd94d99cd39a2bd4631d9bd586a",
+    "draft_sha256": "3e2c596c28ad965174b73bf60033ba60960b87e719392f027c7289691d139468",
+    "review": "核对原句、两问字段顺序、原值及三版更正，接受。"
+  },
+  "609": {
+    "accepted_sha256": "425876dd833c77a03e6695f376dc6238ad09d27c56a639a713f1b6cebdde91a8",
+    "draft_sha256": "998ce6ade9a11371807b219e29af761ccd4ccab24c0123c09952d788aedb6ef8",
+    "review": "核对原句、两问字段顺序、原值及三版更正，接受。"
+  },
+  "720": {
+    "accepted_sha256": "441695dc9f0ada70cdb9338f7c1ef1381d90b6aa14c99e2b54b9fb5008d09a47",
+    "draft_sha256": "36aeb8cf5ee36c2b83086b1159b8b9330399a797c5b72f30f9d7dd0d37d84e4b",
+    "review": "核对原句、两问字段顺序、原值及三版更正，接受。"
+  },
+  "361": {
+    "accepted_sha256": "f996d61f501cd62f3b0985614066712b8be8350a4e0e3c3276bf5dea1692c8b5",
+    "draft_sha256": "315d208809f656eea37851a92eb80fdf2d026fc03fc45155e0bdc10eb618b819",
+    "review": "核对原句、两问字段顺序、原值及三版更正，接受。"
+  }
+}

@@ -47,6 +47,18 @@ hierarchical_storage/
 # 日志
 *.log
 
-# 分级检索运行时数据（补充）
-hierarchical_api_storage/
+# Local archives, credentials and evaluation environments
+hierarchical_api_storage*/
+wheelhouse/
+env-backup-*/
+.venv*/
+.env*
+*.zip
+*.sqlite*
+*.pem
+*.key
+secrets.json
+forge.patch.json
+.ruff_cache/
+
 hr_storage_v04/
